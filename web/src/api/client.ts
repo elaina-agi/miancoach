@@ -38,6 +38,8 @@ export const quizApi = {
   grade: (sessionId: string, chunkId: number, userAnswer: string) =>
     post<GradeOut>(`/api/quiz/session/${sessionId}/grade`, { chunkId, userAnswer }),
   sessions: () => json<SessionRow[]>('/api/quiz/sessions?limit=100'),
+  report: (id: string) =>
+    json<{ sessionId: string; answered: number; avgScore: number; report: string }>(`/api/quiz/session/${id}/report`),
   answers: (id: string) => json<AnswerRow[]>(`/api/quiz/session/${id}`),
   weakness: () => json<WeakRow[]>('/api/quiz/weakness'),
 }

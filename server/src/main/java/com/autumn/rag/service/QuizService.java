@@ -145,4 +145,60 @@ public class QuizService {
     public List<WeakRow> weakness() {
         return quizDao.weakness();
     }
+
+    /**
+     * 场次总结报告(LLM 汇总):requirements.md 5.4 承诺的接口。
+     * 不落库,随用随生成(同一场次作答不变,重生成结果只受模型随机性影响)。
+     */
+    public ReportOut report(UUID sessionId) {
+        List<AnswerRow> answers = quizDao.answers(sessionId);
+        if (answers.isEmpty()) {
+            throw new NotFoundException("场次不存在或还没有作答: " + sessionId);
+        }
+        StringBuilder sb = new StringBuilder();
+        int graded = 0, scoreSum = 0;
+        for (int i = 0; i < answers.size(); i++) {
+            AnswerRow a = answers.get(i);
+            Integer score = a.score();
+            if (score != null) {
+                graded++;
+                scoreSum += score;
+            }
+            sb.append(i + 1).append(". 题目:").append(a.question())
+                    .append("(板块:").append(a.groupTag() == null ? "未知" : a.groupTag())
+                    .append(",得分:").append(score == null ? "未批改" : score).append(")\n");
+            Grade g = parseGradeSafe(a.gradeJson());
+            if (g != null) {
+                if (!g.hits().isEmpty()) {
+                    sb.append("   答对:").append(String.join("、", g.hits())).append('\n');
+                }
+                if (!g.missing().isEmpty()) {
+                    sb.append("   漏掉:").append(String.join("、", g.missing())).append('\n');
+                }
+            }
+        }
+        double avg = graded == 0 ? 0 : (double) scoreSum / graded;
+        String raw = chat.chat(List.of(
+                ChatMessage.system("""
+                        你是面试教练。根据一次模拟面试的逐题批改记录,输出一份简短复盘(markdown):
+                        1. 整体表现一两句(结合平均分与答题质量);
+                        2. 主要薄弱点(归纳共性,不超过 3 条);
+                        3. 下一步复习建议(可执行,不超过 3 条)。
+                        不要罗列每道题,不要输出 JSON。"""),
+                ChatMessage.user("共 " + answers.size() + " 题,平均分 "
+                        + String.format("%.1f", avg) + "。逐题记录:\n" + sb)));
+        return new ReportOut(sessionId, answers.size(), avg, raw);
+    }
+
+    /** 批改 JSON 宽松解析(报告容错:某题批改坏了只影响该题,不影响整场报告)。 */
+    private Grade parseGradeSafe(String gradeJson) {
+        try {
+            JsonNode n = om.readTree(gradeJson == null ? "" : gradeJson);
+            return new Grade(null, strList(n, "hits"), strList(n, "missing"), n.path("comment").asText(""));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public record ReportOut(UUID sessionId, int answered, double avgScore, String report) {}
 }

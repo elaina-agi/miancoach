@@ -38,7 +38,17 @@
         <section class="detail card">
           <div v-if="!active" class="ph">选一场面试查看逐题评分</div>
           <template v-else>
-            <div class="mini-title">场次 {{ fmt(active.createdAt) }} · {{ active.groupTag || '全题库' }}</div>
+            <div class="detail-head">
+              <div class="mini-title">场次 {{ fmt(active.createdAt) }} · {{ active.groupTag || '全题库' }}</div>
+              <el-button size="small" :loading="reportLoading" @click="genReport">
+                <el-icon v-if="!reportLoading"><MagicStick /></el-icon>
+                {{ report ? '重新生成总结' : 'AI 总结' }}
+              </el-button>
+            </div>
+            <div v-if="report" class="report card-soft">
+              <div class="rt">AI 场次总结 · 均分 {{ report.avgScore.toFixed(1) }}</div>
+              <MarkdownView :content="report.report" />
+            </div>
             <div class="answers">
               <details v-for="a in answers" :key="a.id" class="ans-item">
                 <summary>
@@ -87,13 +97,20 @@ import { computed, onMounted, ref } from 'vue'
 import dayjs from 'dayjs'
 import { quizApi } from '../api/client'
 import type { AnswerRow, SessionRow, WeakRow, Grade } from '../api/types'
+import { ElMessage } from 'element-plus'
+import { MagicStick } from '@element-plus/icons-vue'
 import ScoreRing from '../components/ScoreRing.vue'
 import GradePanel from '../components/GradePanel.vue'
+import MarkdownView from '../components/MarkdownView.vue'
+
+interface SessionReport { sessionId: string; answered: number; avgScore: number; report: string }
 
 const sessions = ref<SessionRow[]>([])
 const answers = ref<AnswerRow[]>([])
 const weakness = ref<WeakRow[]>([])
 const activeId = ref('')
+const report = ref<SessionReport | null>(null)
+const reportLoading = ref(false)
 
 const active = computed(() => sessions.value.find((s) => s.id === activeId.value))
 const totalAnswers = computed(() => sessions.value.length)
@@ -117,9 +134,22 @@ function parsed(a: AnswerRow): Grade | null {
 
 async function open(s: SessionRow) {
   activeId.value = s.id
+  report.value = null
   try {
     answers.value = await quizApi.answers(s.id)
   } catch { answers.value = [] }
+}
+
+async function genReport() {
+  if (!activeId.value) return
+  reportLoading.value = true
+  try {
+    report.value = await quizApi.report(activeId.value)
+  } catch (e) {
+    ElMessage.error('总结生成失败: ' + (e as Error).message)
+  } finally {
+    reportLoading.value = false
+  }
 }
 
 onMounted(async () => {
@@ -155,6 +185,10 @@ onMounted(async () => {
 .sess-scope { color: var(--text-faint); font-size: 12px; }
 
 .answers { display: flex; flex-direction: column; gap: 8px; }
+.detail-head { display: flex; justify-content: space-between; align-items: center; }
+.report { margin: 10px 0; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--bg-soft); padding: 12px 14px; }
+.report .rt { font-size: 12px; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+.card-soft { box-shadow: none; }
 .ans-item { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft); }
 .ans-item summary { list-style: none; cursor: pointer; padding: 10px 12px; }
 .ans-item summary::-webkit-details-marker { display: none; }
