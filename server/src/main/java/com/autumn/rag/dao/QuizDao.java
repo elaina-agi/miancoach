@@ -65,7 +65,10 @@ public class QuizDao {
                         + "COALESCE(SUM(CASE WHEN grade IS NOT NULL THEN jsonb_array_length(grade->'missing') ELSE 0 END), 0) AS missed "
                         + "FROM quiz_answer GROUP BY group_tag, category ORDER BY missed DESC NULLS LAST, answered DESC",
                 (rs, i) -> new WeakRow(rs.getString("group_tag"), rs.getString("category"),
-                        rs.getLong("answered"), (Double) rs.getObject("avg_score"), rs.getLong("missed")));
+                        rs.getLong("answered"),
+                        // ROUND(AVG(...)) 返回 numeric(即 BigDecimal),getObject 直接 cast Double 会 500
+                        rs.getObject("avg_score") == null ? null : rs.getBigDecimal("avg_score").doubleValue(),
+                        rs.getLong("missed")));
     }
 
     private static AnswerRow row(ResultSet rs) throws java.sql.SQLException {
