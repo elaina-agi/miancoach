@@ -55,3 +55,6 @@ app:
     top-k: 5
     # 拼进 prompt 的上下文预算(字符),防超长
     context-char-budget: 6000
+    # 拒答阈值:向量 top1 相似度低于它视为"语料库里没有",问答层如实拒答。
+    # 0 = 关闭。定标依据:golden 评测输出的 posTopSimMin / negTopSimMax 区间。
+    min-vector-sim: ${BAGUWEN_RETRIEVAL_MIN_SIM:0.0}

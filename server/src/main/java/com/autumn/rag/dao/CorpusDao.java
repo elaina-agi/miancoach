@@ -167,6 +167,24 @@ public class CorpusDao {
                 limit);
     }
 
+    /** 全部题目(按 doc/chunk 顺序,golden 集改写用)。 */
+    public List<Question> allQuestions() {
+        return jdbc.query("SELECT c.id, d.group_tag, c.category, c.question FROM chunk c "
+                        + "JOIN doc d ON d.id = c.doc_id ORDER BY d.id, c.id",
+                (rs, i) -> new Question(rs.getLong("id"), rs.getString("group_tag"),
+                        rs.getString("category"), rs.getString("question")));
+    }
+
+    /** 最长的 n 道题(答案长、细节多的题才值得出"细节探针")。 */
+    public record LongChunk(long chunkId, String question, int length) {}
+
+    public List<LongChunk> longestChunks(int limit) {
+        return jdbc.query("SELECT c.id, c.question, length(c.content) AS len FROM chunk c "
+                        + "ORDER BY len DESC LIMIT ?",
+                (rs, i) -> new LongChunk(rs.getLong("id"), rs.getString("question"), rs.getInt("len")),
+                limit);
+    }
+
     // ------------------------------------------------------------------ 检索
     /** 向量近邻:cosine 距离升序,sim = 1 - distance。 */
     public List<Hit> vectorTopK(float[] queryVec, int k) {

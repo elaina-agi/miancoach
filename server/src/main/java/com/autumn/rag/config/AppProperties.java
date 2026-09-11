@@ -43,5 +43,5 @@ public record AppProperties(
             int requestTimeoutSecs,
             int connectTimeoutSecs) {}
 
-    public record Retrieval(int topK, int contextCharBudget) {}
+    public record Retrieval(int topK, int contextCharBudget, double minVectorSim) {}
 }
