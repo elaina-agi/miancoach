@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: baguwen-server
+  # Spring Boot 不认 .env,这里显式导入(按 properties 格式解析;optional 表示没有也不报错)。
+  # 两条路径覆盖不同启动目录:在 server/ 下启动 → ../.env;在项目根启动 → .env
+  config:
+    import:
+      - optional:file:../.env[.properties]
+      - optional:file:.env[.properties]
+  datasource:
+    url: ${BAGUWEN_DB_URL:jdbc:postgresql://localhost:15432/baguwen_rag}
+    username: ${BAGUWEN_DB_USER:baguwen}
+    password: ${BAGUWEN_DB_PASSWORD:baguwen_pg_2026}
+    hikari:
+      maximum-pool-size: 6
+  flyway:
+    enabled: true
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  corpus:
+    dir: ${BAGUWEN_CORPUS_DIR:../corpus}
+
+  # ── 生成端:问答 / 批改 / 总结。随时可换厂商、模型、key,不影响已入库的向量。
+  chat:
+    provider: ${BAGUWEN_CHAT_PROVIDER:auto}   # auto(有 key 即真实) | openai | mock
+    base-url: ${BAGUWEN_CHAT_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key: ${BAGUWEN_CHAT_API_KEY:}
+    model: ${BAGUWEN_CHAT_MODEL:qwen-plus}
+    request-timeout-secs: 120
+    connect-timeout-secs: 15
+
+  # ── 向量端:索引与查询。换模型/维度后**必须重新索引**(见 GET /api/meta 的 index 字段)。
+  embed:
+    provider: ${BAGUWEN_EMBED_PROVIDER:auto}  # auto | openai | mock
+    base-url: ${BAGUWEN_EMBED_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key: ${BAGUWEN_EMBED_API_KEY:}
+    model: ${BAGUWEN_EMBED_MODEL:BAAI/bge-m3}
+    dims: ${BAGUWEN_EMBED_DIMS:1024}
+    batch-size: 16
+    # 是否显式传 dimensions。默认 false:硅基流动 bge-m3 传了会 400;百炼 v3/v4 需要指定维度时再开。
+    send-dimensions: ${BAGUWEN_EMBED_SEND_DIMENSIONS:false}
+    request-timeout-secs: 60
+    connect-timeout-secs: 15
+
+  retrieval:
+    top-k: 5
+    # 拼进 prompt 的上下文预算(字符),防超长
+    context-char-budget: 6000
