@@ -1,0 +1,128 @@
+// 与后端接口对应的类型
+export interface GroupCounts {
+  [group: string]: number
+}
+
+export interface QNode {
+  id: number
+  question: string
+}
+export interface CatNode {
+  category: string | null
+  questions: QNode[]
+}
+export interface DocNode {
+  slug: string
+  title: string
+  url: string
+  categories: CatNode[]
+}
+export interface GroupNode {
+  group: string
+  docs: DocNode[]
+}
+
+export interface ChunkFull {
+  chunkId: number
+  docId: number
+  group: string
+  title: string
+  url: string
+  category: string | null
+  question: string
+  content: string
+}
+
+export interface AskRef {
+  chunkId: number
+  question: string
+  category: string | null
+  group: string
+  title: string
+  url: string
+  excerpt: string
+}
+
+export interface QuizQuestion {
+  sessionId: string
+  chunkId: number
+  group: string
+  category: string | null
+  question: string
+}
+
+export interface Grade {
+  score: number | null
+  hits: string[]
+  missing: string[]
+  comment: string
+}
+
+export interface GradeOut {
+  answerId: number
+  group: string
+  category: string | null
+  question: string
+  title: string
+  url: string
+  grade: Grade
+}
+
+export interface SessionRow {
+  id: string
+  groupTag: string | null
+  status: string
+  createdAt: string
+}
+
+export interface AnswerRow {
+  id: number
+  chunkId: number | null
+  groupTag: string | null
+  category: string | null
+  question: string
+  userAnswer: string
+  score: number | null
+  gradeJson: string | null
+  createdAt: string
+}
+
+export interface WeakRow {
+  groupTag: string | null
+  category: string | null
+  answered: number
+  avgScore: number | null
+  missed: number
+}
+
+export interface ReindexResult {
+  docs: number
+  chunks: number
+  groupChunks: GroupCounts
+  realModel: boolean
+}
+
+export interface IndexStatus {
+  indexed: boolean
+  compatible: boolean
+  indexedModel: string | null
+  indexedDims: number | null
+  indexedProvider: string | null
+  indexedAt: string | null
+  currentModel: string
+  currentDims: number
+  currentReal: boolean
+  message: string
+}
+
+export interface MetaInfo {
+  status: string
+  chatReal: boolean
+  chatModel: string
+  embedReal: boolean
+  embedModel: string
+  embedDims: number
+  totalChunks: number
+  docs: number
+  index: IndexStatus
+}

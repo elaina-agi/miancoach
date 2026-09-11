@@ -1,0 +1,94 @@
+/* ============ 全局 base + Element Plus 主题桥接 ============ */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--t-mid) var(--ease), color var(--t-mid) var(--ease);
+}
+
+/* Element Plus 语义色 → 项目令牌(dark 由 html.dark + css-vars 兜底,浅色也一致) */
+:root {
+  --el-color-primary: var(--accent);
+  --el-color-primary-light-3: #4ade80;
+  --el-color-primary-light-5: #86efac;
+  --el-color-primary-light-7: #bbf7d0;
+  --el-color-primary-light-8: #d1fae5;
+  --el-color-primary-light-9: var(--accent-soft);
+  --el-color-primary-dark-2: var(--accent-strong);
+  --el-border-radius-base: var(--radius-sm);
+  --el-font-family: var(--font-display);
+  --el-text-color-primary: var(--text);
+  --el-text-color-regular: var(--text);
+  --el-text-color-secondary: var(--text-dim);
+  --el-border-color: var(--border);
+  --el-border-color-light: var(--border);
+  --el-border-color-lighter: var(--border);
+  --el-bg-color: var(--bg-panel);
+  --el-bg-color-overlay: var(--bg-panel);
+  --el-fill-color-blank: var(--bg-panel);
+  --el-fill-color-light: var(--bg-soft);
+  --el-fill-color-lighter: var(--bg-soft);
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 选中高亮与焦点环 */
+::selection {
+  background: var(--accent-soft);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 通用可点击反馈 */
+button,
+[role='button'],
+.el-button,
+.el-menu-item,
+.el-tree-node__content,
+.clickable {
+  cursor: pointer;
+}
+
+/* 尊重减弱动效 */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
