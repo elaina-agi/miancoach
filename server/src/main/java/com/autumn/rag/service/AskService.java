@@ -49,11 +49,21 @@ public class AskService {
     public record Ref(long chunkId, String question, String category, String group,
                       String title, String url, String excerpt) {}
 
-    public SseEmitter ask(String question) {
+    /** 多轮对话的一轮历史(追问改写与回答背景用)。 */
+    public record Turn(String q, String a) {}
+
+    public SseEmitter ask(String question, List<Turn> history) {
         SseEmitter emitter = new SseEmitter(0L); // 不自动超时,交给 done
         executor.execute(() -> {
             try {
-                List<Hit> hits = retrieve.retrieve(question, props.retrieval().topK());
+                // 多轮:追问带指代("那它怎么持久化的?"),先改写成独立问题再检索
+                String searchQuery = question;
+                Turn last = history == null || history.isEmpty() ? null : history.get(history.size() - 1);
+                if (last != null && last.q() != null && !last.q().isBlank()) {
+                    searchQuery = rewriteFollowUp(last, question);
+                }
+
+                List<Hit> hits = retrieve.retrieve(searchQuery, props.retrieval().topK());
 
                 // 防线一:双门槛拒答 —— 向量余弦与 cross-encoder 分同时过低,
                 // 才判"语料库里没有"。余弦分域内外有重叠(实测正样本最低 0.55 / 负样本最高 0.59),
@@ -98,7 +108,12 @@ public class AskService {
 
                 emit(emitter, "refs", om.writeValueAsString(refs));
                 String material = String.join("\n\n", context);
-                String userText = material + "\n\n请回答下面这个问题,并按要求标注引用:\n" + question;
+                String userText = (last != null
+                        ? "对话背景(上一轮):\n问:" + cut(last.q(), 200) + "\n答:" + cut(last.a(), 600)
+                          + "\n\n本轮问题(可能是指代上一轮的追问):\n" + question + "\n\n"
+                        : "")
+                        + material
+                        + "\n\n请回答下面这个问题,并按要求标注引用:\n" + question;
                 List<ChatMessage> messages = List.of(
                         ChatMessage.system(SYSTEM),
                         ChatMessage.user(userText));
@@ -121,6 +136,27 @@ public class AskService {
             3. 材料不足时如实说明"材料里没有涉及",绝不编造;
             4. 语言精炼,适合面试背诵,可补一句"考点提示"但不得超出材料。
             """;
+
+    private static final String REWRITE_SYSTEM = """
+            你是检索查询改写器。给定上一轮问答和本轮追问,把追问改写成一个**独立、完整、不带指代**的检索查询:
+            1. 把"它/这个/那/上面说的"等指代替换成上一轮里的具体对象;
+            2. 只补全指代,不要扩写、不要回答、不要加入上一轮没有的新话题;
+            3. 只输出改写后的问题本身,不要任何解释或引号。若追问本身已完整独立,原样输出。
+            """;
+
+    /** 追问 → 独立检索问题;改写失败降级用原问题(追问可检索性差一点,总比整个问答挂掉强)。 */
+    private String rewriteFollowUp(Turn last, String question) {
+        try {
+            String rewritten = chat.chat(List.of(
+                    ChatMessage.system(REWRITE_SYSTEM),
+                    ChatMessage.user("上一轮:\n问:" + cut(last.q(), 200) + "\n答:" + cut(last.a(), 600)
+                            + "\n\n本轮追问:" + question)));
+            String s = rewritten == null ? "" : rewritten.trim();
+            return s.isEmpty() || s.length() > 200 ? question : s;
+        } catch (Exception e) {
+            return question;
+        }
+    }
 
     private void emit(SseEmitter emitter, String event, String data) {
         try {

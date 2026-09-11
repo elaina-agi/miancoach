@@ -45,19 +45,29 @@ export const quizApi = {
 export interface StreamHandlers {
   onRefs?: (refs: AskRef[]) => void
   onDelta?: (text: string) => void
-  onDone?: () => void
+  onDone?: (info?: { noAnswer?: boolean }) => void
   onError?: (msg: string) => void
 }
 
+/** 多轮追问的一轮历史(后端据此把"它/那个"改写成独立问题再检索)。 */
+export interface HistoryTurn { q: string; a: string }
+
 /** POST /api/chat/ask 并以 SSE 事件驱动回调。返回 abort。 */
-export function askStream(question: string, h: StreamHandlers): () => void {
+export function askStream(question: string, h: StreamHandlers, history?: HistoryTurn[]): () => void {
   const ctrl = new AbortController()
   void (async () => {
+    let doneFired = false
+    const fireDone = (info?: { noAnswer?: boolean }) => {
+      if (!doneFired) {
+        doneFired = true
+        h.onDone?.(info)
+      }
+    }
     try {
       const resp = await fetch('/api/chat/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history: history ?? [] }),
         signal: ctrl.signal,
       })
       if (!resp.ok) {
@@ -80,7 +90,11 @@ export function askStream(question: string, h: StreamHandlers): () => void {
       const dispatch = (ev: string, payload: string) => {
         if (ev === 'refs') h.onRefs?.(JSON.parse(payload) as AskRef[])
         else if (ev === 'delta') h.onDelta?.(payload)
-        else if (ev === 'done') h.onDone?.()
+        else if (ev === 'done') {
+          let info: { noAnswer?: boolean } | undefined
+          try { info = JSON.parse(payload) as { noAnswer?: boolean } } catch { /* 兼容空载荷 */ }
+          fireDone(info)
+        }
         else if (ev === 'error') h.onError?.(payload)
       }
       for (;;) {
@@ -106,7 +120,7 @@ export function askStream(question: string, h: StreamHandlers): () => void {
         }
       }
       if (event) flush()
-      h.onDone?.()
+      fireDone()
     } catch (e) {
       if ((e as Error).name !== 'AbortError') h.onError?.((e as Error).message)
     }
