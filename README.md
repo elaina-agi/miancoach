@@ -15,13 +15,19 @@ server/               Spring Boot 后端(jar 31MB 已可跑)
 web/                  Vue3 前端(四页)
 ```
 
-## 现状(2026-09-10):全链路可用
+## 现状(2026-09-12,feat/production-ready 分支):全链路可用 + 检索管线升级
 
-- **索引**:corpus → Java 分块(叶子级标题=题,兼容 h2/h3)→ 向量(1024d)→ pgvector
-  - `POST /api/admin/reindex` = **13 doc / 574 chunk**(与手数一致)
-- **检索自评**:`GET /api/admin/eval?n=20` → 输出 exact/vector recall
-  - mock 下 exact=1.0 / vector=0(mock 向量随机)——恰好证明 FAQ 场景 hybrid 的价值
-- **问答**:`POST /api/chat/ask`(SSE:refs→delta→done),答案引用可点开原文
+- **索引**:corpus → Java 分块(叶子级标题=题,兼容 h2/h3)→ **长答案切子段(parent-child,574 题 → 1155 子段)**
+  → 向量(1024d)→ pgvector;`index_meta` 指纹带分块方案,换方案未重灌直接 409
+  - `POST /api/admin/reindex` = **13 doc / 574 chunk / 1155 seg**
+- **检索**:exact / vector(题目级+子段级同池) / keyword 多路召回 → 前 20 候选交 **bge-reranker-v2-m3(免费)统一重排**
+  → top5;子段命中的重排证据用子段正文;重排挂掉自动降级回召回原序
+- **拒答**:余弦与重排分双门槛(同时过低才拒),域外问题不硬答,`noAnswer` 事件 + 诚实话术
+- **评测(去自环)**:`POST /api/admin/eval/build` 用 LLM 把题干改写成真实问法 + 细节探针 + 域外负样本;
+  `GET /api/admin/eval?mode=golden` 报 recall@k / MRR / 延迟 / 拒答定标。数字见 **docs/eval-report.md**:
+  探针(细节题)recall@1 0.615→**0.795**、recall@5 0.846→**0.949**
+- **多轮追问**:`/api/chat/ask` 带 history,追问里的"它/那个"先改写成独立问题再检索
+- **问答**:`POST /api/chat/ask`(SSE:refs→delta→done),子段命中片段前置进上下文,答案引用可点开原文
 - **模拟面试**:`/api/quiz/start|pick|grade`,批改=LLM 对照标准原文逐点评分(hits/missing),落库
 - **复盘**:场次记录 + 按板块/类目的薄弱聚合
 - 前端四页(问答/知识库/模拟面试/复盘),deep-first 设计(代码绿 x 深夜自习,ui-ux-pro-max 定调),深浅双主题
