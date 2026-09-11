@@ -32,17 +32,17 @@ public class MetaController {
             String status,
             boolean chatReal, String chatModel,
             boolean embedReal, String embedModel, int embedDims,
-            int totalChunks, int docs,
+            int totalChunks, int totalSegs, int docs,
             IndexMetaService.IndexStatus index) {}
 
-    @Operation(summary = "服务状态 + 两端模型模式 + 题量 + 向量模型指纹校验")
+    @Operation(summary = "服务状态 + 两端模型模式 + 题量/子段量 + 向量模型指纹校验")
     @GetMapping("/meta")
     public Meta meta() {
         return new Meta(
                 "ok",
                 chat.isReal(), chat.name(),
                 embed.isReal(), embed.model(), embed.dims(),
-                dao.countChunks(), dao.countDocs(),
+                dao.countChunks(), dao.countSegs(), dao.countDocs(),
                 indexMeta.status());
     }
 }

@@ -48,9 +48,10 @@ public class AdminController {
                        @RequestParam(defaultValue = "5") int topK,
                        @RequestParam(defaultValue = "self") String mode,
                        @RequestParam(required = false) String kind,
-                       @RequestParam(required = false, defaultValue = "-1") double rejectSim) {
+                       @RequestParam(required = false, defaultValue = "-1") double rejectSim,
+                       @RequestParam(required = false, defaultValue = "-1") double rejectRerank) {
         if ("golden".equalsIgnoreCase(mode)) {
-            return evalService.golden(n, topK, kind, rejectSim);
+            return evalService.golden(n, topK, kind, rejectSim, rejectRerank);
         }
         return evalService.selfRecall(n, topK);
     }

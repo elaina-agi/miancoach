@@ -82,26 +82,35 @@ public class EvalService {
     /** 单条未命中的明细,便于分析检索到底漏在哪。rank=0 表示 topK 内没出现。 */
     public record MissSample(String kind, String query, String target, int rank, double topSim) {}
 
-    /** 单条负样本的明细:给拒答阈值定标用(看域外问题 top1 相似度都落在哪)。 */
-    public record NegativeSample(String query, double topSim, boolean rejected) {}
+    /** 单条负样本的明细:给拒答阈值定标用(看域外问题的余弦分/重排分都落在哪)。 */
+    public record NegativeSample(String query, double topSim, double rerankScore, boolean rejected) {}
 
     public record GoldenEvalOut(
             int sampled, int unresolved, int negatives, int topK,
             double recall1, double recallK, double mrr,
             double avgLatencyMs, double p95LatencyMs,
-            int negativesRejected, double negativeRejectRate, double rejectSim,
+            int negativesRejected, double negativeRejectRate, double rejectSim, double rejectRerank,
             double posTopSimAvg, double posTopSimMin, double negTopSimMax,
+            double posRerankMin, double negRerankMax,
             List<MissSample> misses, List<NegativeSample> negativeSamples,
             String embedModel, boolean embedReal) {}
+
+    /** 向量通道最高相似度(重排会打乱顺序,取 max 而非 first;评测与拒答同一口径)。 */
+    private static double topVecSim(List<Hit> hits) {
+        return hits.stream().filter(h -> "vector".equals(h.channel()))
+                .mapToDouble(Hit::sim).max().orElse(0.0);
+    }
 
     /**
      * @param n        抽样正样本数(<=0 全量;golden 集 ~1200 条时全量较慢)
      * @param kind     null/空=全部;可只评 rewrite|probe
-     * @param rejectSim 负样本判拒的相似度阈值;<0 用配置 app.retrieval.min-vector-sim
+     * @param rejectSim    负样本判拒的余弦阈值;<0 用配置 app.retrieval.min-vector-sim
+     * @param rejectRerank 负样本判拒的重排分阈值;<0 用配置 app.retrieval.min-rerank-score
      */
-    public GoldenEvalOut golden(int n, int topK, String kind, double rejectSim) {
+    public GoldenEvalOut golden(int n, int topK, String kind, double rejectSim, double rejectRerank) {
         indexMeta.assertCompatible();
         double threshold = rejectSim >= 0 ? rejectSim : props.retrieval().minVectorSim();
+        double rerankThreshold = rejectRerank >= 0 ? rejectRerank : props.retrieval().minRerankScore();
 
         List<Row> positives = new ArrayList<>();
         List<Row> negatives = new ArrayList<>();
@@ -119,7 +128,7 @@ public class EvalService {
 
         int unresolved = 0;
         int hit1 = 0, hitK = 0, counted = 0;
-        double mrrSum = 0, posSimSum = 0, posSimMin = 1.0;
+        double mrrSum = 0, posSimSum = 0, posSimMin = 1.0, posRerankMin = 1.0;
         List<Long> latencies = new ArrayList<>();
         List<MissSample> misses = new ArrayList<>();
 
@@ -140,10 +149,11 @@ public class EvalService {
                     break;
                 }
             }
-            double topSim = hits.stream().filter(h -> "vector".equals(h.channel()))
-                    .findFirst().map(Hit::sim).orElse(0.0);
+            double topSim = topVecSim(hits);
+            double topRerank = hits.stream().mapToDouble(Hit::rerankScore).max().orElse(0.0);
             posSimSum += topSim;
             posSimMin = Math.min(posSimMin, topSim);
+            posRerankMin = Math.min(posRerankMin, topRerank);
 
             counted++;
             if (rank == 1) {
@@ -158,21 +168,22 @@ public class EvalService {
         }
 
         int rejected = 0;
-        double negSimSum = 0, negSimMax = 0;
+        double negSimSum = 0, negSimMax = 0, negRerankMax = 0;
         List<NegativeSample> negDetail = new ArrayList<>();
         for (Row neg : negatives) {
             long t0 = System.currentTimeMillis();
             List<Hit> hits = retrieve.retrieve(neg.query(), topK);
             latencies.add(System.currentTimeMillis() - t0);
-            double topSim = hits.stream().filter(h -> "vector".equals(h.channel()))
-                    .findFirst().map(Hit::sim).orElse(0.0);
+            double topSim = topVecSim(hits);
+            double topRerank = hits.stream().mapToDouble(Hit::rerankScore).max().orElse(0.0);
             negSimSum += topSim;
             negSimMax = Math.max(negSimMax, topSim);
-            boolean isRejected = topSim < threshold;
+            negRerankMax = Math.max(negRerankMax, topRerank);
+            boolean isRejected = topSim < threshold && topRerank < rerankThreshold; // 双门槛,同 AskService
             if (isRejected) {
                 rejected++;
             }
-            negDetail.add(new NegativeSample(neg.query(), topSim, isRejected));
+            negDetail.add(new NegativeSample(neg.query(), topSim, topRerank, isRejected));
         }
 
         int posN = Math.max(1, counted);
@@ -185,8 +196,9 @@ public class EvalService {
                 positives.size(), unresolved, negatives.size(), topK,
                 (double) hit1 / posN, (double) hitK / posN, mrrSum / posN,
                 latencies.stream().mapToLong(Long::longValue).average().orElse(0), p95,
-                rejected, (double) rejected / negN, threshold,
+                rejected, (double) rejected / negN, threshold, rerankThreshold,
                 counted == 0 ? 0 : posSimSum / counted, counted == 0 ? 0 : posSimMin, negSimMax,
+                counted == 0 ? 0 : posRerankMin, negRerankMax,
                 misses, negDetail, embed.model(), embed.isReal());
     }
 }
