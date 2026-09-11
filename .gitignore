@@ -1,0 +1,17 @@
+# 密钥 / 环境
+.env
+*.local
+# Python 虚拟环境(crawler 用)
+.venv/
+# 构建产物
+server/target/
+web/node_modules/
+web/dist/
+# IDE / 系统
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+# 语料目录大文件之类不入库?此处按需
+# Local-only notes
+/.local-notes/
