@@ -109,7 +109,12 @@ export function askStream(question: string, h: StreamHandlers, history?: History
           buffer = buffer.slice(idx + 2)
           for (const line of frame.split('\n')) {
             if (line.startsWith('event:')) event = line.slice(6).trim()
-            else if (line.startsWith('data:')) data += line.slice(5).trim()
+            else if (line.startsWith('data:')) {
+              // SSE 规范:同一帧的多行 data 用 \n 连接(后端把含换行的 delta 拆成多行 data 发送);
+              // 冒号后只剥一个空格,保住 markdown 里"嵌套列表/缩进"的前导空格
+              const payload = line.slice(5)
+              data += (data ? '\n' : '') + (payload.startsWith(' ') ? payload.slice(1) : payload)
+            }
           }
           if (event === 'delta' && data) {
             // 逐块推送,避免一次性 append 大文本
