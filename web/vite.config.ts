@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import vueDevTools from 'vite-plugin-vue-devtools'
+import { codeInspectorPlugin } from 'code-inspector-plugin'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // Vue 官方开发者工具(仅 dev):组件树/props 状态检查,左下角浮标进入
+    vueDevTools(),
+    // 按住 Ctrl+Shift 点击页面元素,VSCode 打开对应 .vue 的对应行(仅 dev)
+    codeInspectorPlugin({ bundler: 'vite' }),
+  ],
   server: {
     port: 5173,
     // 开发期把 /api 代理到后端,前端免跨域(SSE 也走同源)
