@@ -1,0 +1,85 @@
+# ============================================================
+# MianCoach 接口自测文件
+# 用法一(IDEA 原生支持): 直接打开本文件,每个请求上方有 ▶ 运行按钮
+# 用法二(VS Code): 安装 REST Client 插件(humao.rest-client),点 "Send Request"
+# 注意: 请求之间有依赖时(如 quiz 的 sessionId),先跑 start 拿到 id 再替换
+# ============================================================
+
+### 0. 健康检查(最轻的冒烟:服务活着吗/模型接了吗/题量多少)
+GET http://localhost:8080/api/meta
+
+### ──────────────── 问答(SSE 流式) ────────────────
+
+### 1. 问答:正常问题(响应是 text/event-stream,面板里会持续滚动输出直到 done)
+#    事件顺序: refs(引用卡片) → delta*(答案增量) → done(结束)
+POST http://localhost:8080/api/chat/ask
+Content-Type: application/json
+
+{"question": "Redis 为什么快？"}
+
+### 1b. 问答:多轮追问(带上轮问答,后端改写指代后检索)
+POST http://localhost:8080/api/chat/ask
+Content-Type: application/json
+
+{
+  "question": "那它的重写机制是怎么回事？",
+  "history": [
+    { "q": "Redis 的 AOF 持久化是怎么回事？", "a": "AOF 是追加写命令日志的持久化方式,文件大了会触发重写。" }
+  ]
+}
+
+### 1c. 问答:域外问题(应看到 noAnswer 拒答:refs 为空 + 拒答话术)
+POST http://localhost:8080/api/chat/ask
+Content-Type: application/json
+
+{"question": "Vue3 的响应式原理是什么？"}
+
+### ──────────────── 知识库 ────────────────
+
+### 2. 题目树(全部 574 题,按板块/类目组织)
+GET http://localhost:8080/api/corpus/tree
+
+### 2b. 各板块题量统计
+GET http://localhost:8080/api/corpus/groups
+
+### 2c. 单题原文(把 id 换成树里看到的 chunkId)
+GET http://localhost:8080/api/corpus/chunk/1901
+
+### ──────────────── 模拟面试 ────────────────
+
+### 3. 开始面试:抽一道题(返回 sessionId 和 chunkId,记下来供 3b/3c 用)
+POST http://localhost:8080/api/quiz/start
+Content-Type: application/json
+
+{"groupTag": "database"}
+
+### 3b. 批改(把 sessionId/chunkId 换成 3 返回的真实值)
+POST http://localhost:8080/api/quiz/session/替换成真实sessionId/grade
+Content-Type: application/json
+
+{"chunkId": 1901, "userAnswer": "Redis 快是因为纯内存操作、高效数据结构、单线程避免上下文切换、IO 多路复用。"}
+
+### 3c. 场次列表
+GET http://localhost:8080/api/quiz/sessions?limit=10
+
+### 3d. 薄弱点聚合
+GET http://localhost:8080/api/quiz/weakness
+
+### 3e. 场次 AI 总结(把 id 换成真实 sessionId)
+GET http://localhost:8080/api/quiz/session/替换成真实sessionId/report
+
+### ──────────────── 评测(去自环) ────────────────
+
+### 4. 旧自环评测(链路回归用)
+GET http://localhost:8080/api/admin/eval?n=20
+
+### 4b. golden 评测(真实 recall/MRR/拒答率,慢一点)
+GET http://localhost:8080/api/admin/eval?mode=golden&n=50&topK=5
+
+### ──────────────── 管理(慎用) ────────────────
+
+### 5. 全量重灌索引(语料 md → 分块 → 向量 → pgvector,574 题+1155 子段)
+POST http://localhost:8080/api/admin/reindex
+
+### 5b. 重建 golden 评测集(会批量调 LLM,约 15 分钟)
+POST http://localhost:8080/api/admin/eval/build?rewriteLimit=0&probeCount=40

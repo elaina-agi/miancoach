@@ -73,4 +73,10 @@ public class QuizController {
     public List<WeakRow> weakness() {
         return quizService.weakness();
     }
+
+    @Operation(summary = "场次总结报告(LLM 汇总表现/薄弱点/复习建议)")
+    @GetMapping("/session/{id}/report")
+    public QuizService.ReportOut report(@PathVariable UUID id) {
+        return quizService.report(id);
+    }
 }

@@ -54,4 +54,20 @@ app:
   retrieval:
     top-k: 5
     # 拼进 prompt 的上下文预算(字符),防超长
-    context-char-budget: 6000
+    context-char-budget: 8000
+    # 拒答双门槛(向量余弦与重排分同时过低才拒;由 golden 评测的 pos/neg 分数区间定标):
+    # 实测正样本 cos 最低 0.549/重排分最低 0.0255,纯域外负样本重排分 <0.008、语义沾边 <0.061;
+    # 0.55+0.02 拦住全部"纯域外"(6/10,含语义沾边的 4 条放行给 LLM 兜底),正样本误拒趋近 0。
+    min-vector-sim: ${BAGUWEN_RETRIEVAL_MIN_SIM:0.55}
+    min-rerank-score: ${BAGUWEN_RETRIEVAL_MIN_RERANK:0.02}
+
+  # ── 重排端:cross-encoder 统一多粒度召回的排序(题目级/子段级余弦分不可比)。
+  # key 缺省复用向量端的硅基流动 key;bge-reranker-v2-m3 免费。
+  rerank:
+    provider: ${BAGUWEN_RERANK_PROVIDER:auto}   # auto(有 key 即真实) | openai | mock
+    base-url: ${BAGUWEN_RERANK_BASE_URL:https://api.siliconflow.cn/v1}
+    api-key: ${BAGUWEN_RERANK_API_KEY:${BAGUWEN_EMBED_API_KEY:}}
+    model: ${BAGUWEN_RERANK_MODEL:BAAI/bge-reranker-v2-m3}
+    candidate-k: 20                             # 送入重排的候选数
+    request-timeout-secs: 15
+    connect-timeout-secs: 10

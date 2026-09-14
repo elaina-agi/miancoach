@@ -25,10 +25,14 @@ public class CorpusDao {
     }
 
     // ------------------------------------------------------------------ 记录
-    /** 检索命中块(题目级)。 */
+    /**
+     * 检索命中块(题目级)。segId>0 表示命中的是"子段向量"(parent-child),0=题目级向量;
+     * rerankScore 是 cross-encoder 给的相关性分(未过重排的命中为 0,拒答阈值用它当第二判据)。
+     */
     public record Hit(
             long chunkId, String group, String title, String url,
-            String category, String question, double sim, String channel) {}
+            String category, String question, double sim, String channel, long segId,
+            double rerankScore) {}
 
     /** 树的中间行。 */
     public record TreeRow(
@@ -62,12 +66,34 @@ public class CorpusDao {
         return kh.getKey().longValue();
     }
 
-    public void insertChunk(long docId, Section s, float[] embedding) {
-        jdbc.update(
-                "INSERT INTO chunk(doc_id, category, question, question_key, content, embedding) "
-                        + "VALUES (?,?,?,?,?, CAST(? AS vector))",
-                docId, emptyToNull(s.category()), s.question(), s.questionKey(),
-                s.content(), vectorLiteral(embedding));
+    public long insertChunk(long docId, Section s, float[] embedding) {
+        KeyHolder kh = new GeneratedKeyHolder();
+        jdbc.update(con -> {
+            PreparedStatement ps = con.prepareStatement(
+                    "INSERT INTO chunk(doc_id, category, question, question_key, content, embedding) "
+                            + "VALUES (?,?,?,?,?, CAST(? AS vector))",
+                    new String[]{"id"});
+            ps.setLong(1, docId);
+            ps.setString(2, emptyToNull(s.category()));
+            ps.setString(3, s.question());
+            ps.setString(4, s.questionKey());
+            ps.setString(5, s.content());
+            ps.setString(6, vectorLiteral(embedding));
+            return ps;
+        }, kh);
+        return kh.getKey().longValue();
+    }
+
+    /** 写入子段(parent-child 的 child 级)。 */
+    public void insertSeg(long chunkId, int seq, String content, float[] embedding) {
+        jdbc.update("INSERT INTO chunk_seg(chunk_id, seq, content, embedding) "
+                        + "VALUES (?,?,?, CAST(? AS vector))",
+                chunkId, seq, content, vectorLiteral(embedding));
+    }
+
+    public int countSegs() {
+        Integer c = jdbc.queryForObject("SELECT count(*) FROM chunk_seg", Integer.class);
+        return c == null ? 0 : c;
     }
 
     /** 全量重灌前清库(chunk 先删,doc 级联)。quiz_answer 里被删 chunk 置空,历史保留。 */
@@ -100,6 +126,11 @@ public class CorpusDao {
         jdbc.execute("ALTER TABLE chunk ALTER COLUMN embedding TYPE vector(" + dims + ")");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embedding "
                 + "ON chunk USING hnsw (embedding vector_cosine_ops)");
+        // 子段向量列跟随(chunk 级换维度时子段也必须换,两者始终同一空间)
+        jdbc.execute("DROP INDEX IF EXISTS idx_chunk_seg_embedding");
+        jdbc.execute("ALTER TABLE chunk_seg ALTER COLUMN embedding TYPE vector(" + dims + ")");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_chunk_seg_embedding "
+                + "ON chunk_seg USING hnsw (embedding vector_cosine_ops)");
     }
 
     public int countChunks() {
@@ -167,8 +198,26 @@ public class CorpusDao {
                 limit);
     }
 
+    /** 全部题目(按 doc/chunk 顺序,golden 集改写用)。 */
+    public List<Question> allQuestions() {
+        return jdbc.query("SELECT c.id, d.group_tag, c.category, c.question FROM chunk c "
+                        + "JOIN doc d ON d.id = c.doc_id ORDER BY d.id, c.id",
+                (rs, i) -> new Question(rs.getLong("id"), rs.getString("group_tag"),
+                        rs.getString("category"), rs.getString("question")));
+    }
+
+    /** 最长的 n 道题(答案长、细节多的题才值得出"细节探针")。 */
+    public record LongChunk(long chunkId, String question, int length) {}
+
+    public List<LongChunk> longestChunks(int limit) {
+        return jdbc.query("SELECT c.id, c.question, length(c.content) AS len FROM chunk c "
+                        + "ORDER BY len DESC LIMIT ?",
+                (rs, i) -> new LongChunk(rs.getLong("id"), rs.getString("question"), rs.getInt("len")),
+                limit);
+    }
+
     // ------------------------------------------------------------------ 检索
-    /** 向量近邻:cosine 距离升序,sim = 1 - distance。 */
+    /** 向量近邻:cosine 距离升序,sim = 1 - distance(题目级)。 */
     public List<Hit> vectorTopK(float[] queryVec, int k) {
         String lit = vectorLiteral(queryVec);
         return jdbc.query("SELECT c.id, d.group_tag, d.title, d.url, c.category, c.question, "
@@ -177,7 +226,23 @@ public class CorpusDao {
                         + "ORDER BY c.embedding <=> CAST(? AS vector) LIMIT ?",
                 (rs, i) -> new Hit(
                         rs.getLong("id"), rs.getString("group_tag"), rs.getString("title"), rs.getString("url"),
-                        rs.getString("category"), rs.getString("question"), rs.getDouble("sim"), "vector"),
+                        rs.getString("category"), rs.getString("question"), rs.getDouble("sim"), "vector", 0L, 0.0),
+                lit, lit, k);
+    }
+
+    /** 子段级向量近邻(parent-child 的 child 通道):返回父题 hit,segId 供生成端做上下文倾斜。 */
+    public List<Hit> vectorSegTopK(float[] queryVec, int k) {
+        String lit = vectorLiteral(queryVec);
+        return jdbc.query("SELECT c.id AS chunk_id, s.id AS seg_id, d.group_tag, d.title, d.url, "
+                        + "c.category, c.question, 1 - (s.embedding <=> CAST(? AS vector)) AS sim "
+                        + "FROM chunk_seg s "
+                        + "JOIN chunk c ON c.id = s.chunk_id "
+                        + "JOIN doc d ON d.id = c.doc_id "
+                        + "ORDER BY s.embedding <=> CAST(? AS vector) LIMIT ?",
+                (rs, i) -> new Hit(
+                        rs.getLong("chunk_id"), rs.getString("group_tag"), rs.getString("title"), rs.getString("url"),
+                        rs.getString("category"), rs.getString("question"), rs.getDouble("sim"), "vector",
+                        rs.getLong("seg_id"), 0.0),
                 lit, lit, k);
     }
 
@@ -188,7 +253,7 @@ public class CorpusDao {
                         + "WHERE c.question_key = ? ORDER BY d.id LIMIT 8",
                 (rs, i) -> new Hit(
                         rs.getLong("id"), rs.getString("group_tag"), rs.getString("title"), rs.getString("url"),
-                        rs.getString("category"), rs.getString("question"), rs.getDouble("sim"), "exact"),
+                        rs.getString("category"), rs.getString("question"), rs.getDouble("sim"), "exact", 0L, 0.0),
                 questionKey);
     }
 
@@ -201,8 +266,47 @@ public class CorpusDao {
                         + "ORDER BY (c.question ILIKE ?) DESC, c.id LIMIT ?",
                 (rs, i) -> new Hit(
                         rs.getLong("id"), rs.getString("group_tag"), rs.getString("title"), rs.getString("url"),
-                        rs.getString("category"), rs.getString("question"), rs.getDouble("sim"), "keyword"),
+                        rs.getString("category"), rs.getString("question"), rs.getDouble("sim"), "keyword", 0L, 0.0),
                 like, like, like, limit);
+    }
+
+    /** 子段正文(生成端"命中片段前置"用)。 */
+    public String getSegContent(long segId) {
+        return jdbc.query("SELECT content FROM chunk_seg WHERE id = ?",
+                rs -> rs.next() ? rs.getString(1) : null, segId);
+    }
+
+    /** 批量取重排文本:题干 + 正文前 800 字符(cross-encoder 输入够用了,省流量)。 */
+    public Map<Long, String> rerankTexts(List<Long> chunkIds) {
+        if (chunkIds.isEmpty()) {
+            return Map.of();
+        }
+        String in = String.join(",", java.util.Collections.nCopies(chunkIds.size(), "?"));
+        return jdbc.query("SELECT id, question || E'\\n' || left(content, 800) AS text "
+                        + "FROM chunk WHERE id IN (" + in + ")",
+                rs -> {
+                    var m = new java.util.LinkedHashMap<Long, String>();
+                    while (rs.next()) {
+                        m.put(rs.getLong("id"), rs.getString("text"));
+                    }
+                    return m;
+                }, chunkIds.toArray());
+    }
+
+    /** 批量取子段正文(子段命中的重排证据:细节常在父题中后部,截前 800 字会把它截没)。 */
+    public Map<Long, String> segTexts(List<Long> segIds) {
+        if (segIds.isEmpty()) {
+            return Map.of();
+        }
+        String in = String.join(",", java.util.Collections.nCopies(segIds.size(), "?"));
+        return jdbc.query("SELECT id, content FROM chunk_seg WHERE id IN (" + in + ")",
+                rs -> {
+                    var m = new java.util.LinkedHashMap<Long, String>();
+                    while (rs.next()) {
+                        m.put(rs.getLong("id"), rs.getString("content"));
+                    }
+                    return m;
+                }, segIds.toArray());
     }
 
     // ------------------------------------------------------------------ helpers

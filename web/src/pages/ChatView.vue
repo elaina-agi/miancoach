@@ -23,6 +23,7 @@
           <template v-if="m.role === 'assistant'">
             <MarkdownView v-if="m.text" :content="m.text" />
             <div v-if="m.streaming" class="cursor" />
+            <div v-if="m.noAnswer" class="no-answer">语料外问题 · 已拒绝作答</div>
             <!-- 引用 -->
             <div v-if="m.refs?.length" class="refs">
               <div class="refs-title">出处 {{ m.refs.length }} 篇 · 点击追读原文</div>
@@ -89,7 +90,7 @@ import { ElMessage } from 'element-plus'
 import { Promotion, VideoPause, TopRight } from '@element-plus/icons-vue'
 import MarkdownView from '../components/MarkdownView.vue'
 
-interface Msg { role: 'user' | 'assistant'; text: string; refs?: AskRef[]; streaming?: boolean }
+interface Msg { role: 'user' | 'assistant'; text: string; refs?: AskRef[]; streaming?: boolean; noAnswer?: boolean }
 
 const topics = [
   'String 为什么不可变?',
@@ -133,6 +134,16 @@ async function send(text?: string) {
   const q = (text ?? input.value).trim()
   if (!q || streaming.value) return
   input.value = ''
+  // 取上一轮问答当 history(后端据此把追问里的指代改写成独立问题再检索)
+  let history: { q: string; a: string }[] = []
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m.role === 'assistant' && !m.streaming && m.text) {
+      const prev = messages.value[i - 1]
+      if (prev && prev.role === 'user') history = [{ q: prev.text, a: m.text }]
+      break
+    }
+  }
   messages.value.push({ role: 'user', text: q })
   const msg: Msg = { role: 'assistant', text: '', refs: [], streaming: true }
   messages.value.push(msg)
@@ -147,8 +158,9 @@ async function send(text?: string) {
       msg.text += t
       scrollBottom()
     },
-    onDone: () => {
+    onDone: (info) => {
       msg.streaming = false
+      msg.noAnswer = info?.noAnswer
       streaming.value = false
       scrollBottom()
     },
@@ -158,7 +170,7 @@ async function send(text?: string) {
       msg.text = '出错了:' + e
       ElMessage.error(e)
     },
-  })
+  }, history)
 }
 
 function stop() {
@@ -195,6 +207,11 @@ h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.4px; }
 .cursor {
   display: inline-block; width: 2px; height: 1em; vertical-align: -0.15em;
   background: var(--accent); animation: blink 1s step-start infinite;
+}
+.no-answer {
+  margin-top: 8px; display: inline-block; font-size: 11.5px; font-weight: 600;
+  color: var(--text-dim); background: var(--bg-soft); border: 1px dashed var(--border-strong);
+  border-radius: 7px; padding: 3px 8px;
 }
 @keyframes blink { 50% { opacity: 0; } }
 

@@ -12,7 +12,8 @@ public record AppProperties(
         Corpus corpus,
         Chat chat,
         Embed embed,
-        Retrieval retrieval) {
+        Retrieval retrieval,
+        Rerank rerank) {
 
     public record Corpus(String dir) {}
 
@@ -43,5 +44,23 @@ public record AppProperties(
             int requestTimeoutSecs,
             int connectTimeoutSecs) {}
 
-    public record Retrieval(int topK, int contextCharBudget) {}
+    /**
+     * 拒答双门槛:余弦分与重排分**同时**低于阈值才拒(评测的 pos/neg 区间定标)。
+     * 余弦分域内外有重叠,重排分(cross-encoder)区分度好得多。
+     */
+    public record Retrieval(int topK, int contextCharBudget, double minVectorSim, double minRerankScore) {}
+
+    /**
+     * 重排端:cross-encoder 对多路召回统一排序。
+     * 动机:题目级向量与子段级向量(parent-child)的相似度**不可比**,混池排序会互相挤位;
+     * 召回做宽、重排做准是标准解法。key 缺省复用向量端的硅基流动 key。
+     */
+    public record Rerank(
+            String provider,          // auto(有 key 即真实) | openai | mock
+            String baseUrl,
+            String apiKey,
+            String model,
+            int candidateK,           // 送入重排的候选数(从合并后的召回列表取前 N)
+            int requestTimeoutSecs,
+            int connectTimeoutSecs) {}
 }

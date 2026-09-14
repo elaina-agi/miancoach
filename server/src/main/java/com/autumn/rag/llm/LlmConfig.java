@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** 装配两个独立提供者:生成端与向量端各管各的 base-url / key / model。 */
+import java.util.List;
+
+/** 装配三个独立提供者:生成端、向量端、重排端各管各的 base-url / key / model。 */
 @Configuration
 public class LlmConfig {
 
@@ -25,6 +27,31 @@ public class LlmConfig {
             return new OpenAiCompatEmbedding(e, om);
         }
         return new MockEmbedding(e);
+    }
+
+    @Bean
+    public RerankProvider rerankProvider(AppProperties props, ObjectMapper om) {
+        AppProperties.Rerank r = props.rerank();
+        if (useReal(r.provider(), r.apiKey(), "app.rerank")) {
+            return new OpenAiCompatRerank(r, om);
+        }
+        // mock 重排 = "永远不重排"(调用方按 isReal() 跳过),不需要独立实现类
+        return new RerankProvider() {
+            @Override
+            public boolean isReal() {
+                return false;
+            }
+
+            @Override
+            public String name() {
+                return "mock:no-rerank";
+            }
+
+            @Override
+            public double[] scores(String query, List<String> documents) {
+                throw new UnsupportedOperationException("mock rerank 不打分");
+            }
+        };
     }
 
     /**

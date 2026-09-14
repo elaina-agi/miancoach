@@ -16,26 +16,28 @@ public class IndexMetaDao {
     }
 
     public record Meta(String embedModel, int embedDims, String embedProvider,
-                       int chunkCount, OffsetDateTime indexedAt) {}
+                       int chunkCount, String chunking, OffsetDateTime indexedAt) {}
 
-    public void write(String embedModel, int embedDims, String embedProvider, int chunkCount) {
-        jdbc.update("INSERT INTO index_meta(id, embed_model, embed_dims, embed_provider, chunk_count, indexed_at) "
-                        + "VALUES (1, ?, ?, ?, ?, now()) "
+    public void write(String embedModel, int embedDims, String embedProvider, int chunkCount, String chunking) {
+        jdbc.update("INSERT INTO index_meta(id, embed_model, embed_dims, embed_provider, chunk_count, chunking, indexed_at) "
+                        + "VALUES (1, ?, ?, ?, ?, ?, now()) "
                         + "ON CONFLICT (id) DO UPDATE SET "
                         + "embed_model = EXCLUDED.embed_model, "
                         + "embed_dims = EXCLUDED.embed_dims, "
                         + "embed_provider = EXCLUDED.embed_provider, "
                         + "chunk_count = EXCLUDED.chunk_count, "
+                        + "chunking = EXCLUDED.chunking, "
                         + "indexed_at = now()",
-                embedModel, embedDims, embedProvider, chunkCount);
+                embedModel, embedDims, embedProvider, chunkCount, chunking);
     }
 
     public Meta read() {
-        return jdbc.query("SELECT embed_model, embed_dims, embed_provider, chunk_count, indexed_at "
+        return jdbc.query("SELECT embed_model, embed_dims, embed_provider, chunk_count, chunking, indexed_at "
                         + "FROM index_meta WHERE id = 1",
                 rs -> rs.next() ? new Meta(
                         rs.getString("embed_model"), rs.getInt("embed_dims"),
                         rs.getString("embed_provider"), rs.getInt("chunk_count"),
+                        rs.getString("chunking"),
                         rs.getObject("indexed_at", OffsetDateTime.class)) : null);
     }
 }
