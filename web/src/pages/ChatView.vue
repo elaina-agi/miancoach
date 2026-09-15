@@ -89,6 +89,7 @@ import type { AskRef, ChunkFull } from '../api/types'
 import { ElMessage } from 'element-plus'
 import { Promotion, VideoPause, TopRight } from '@element-plus/icons-vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import { createSmoothAppender, type SmoothAppender } from '../lib/smoothStream'
 
 interface Msg { role: 'user' | 'assistant'; text: string; refs?: AskRef[]; streaming?: boolean; noAnswer?: boolean }
 
@@ -106,6 +107,8 @@ const input = ref('')
 const streaming = ref(false)
 const listEl = ref<HTMLElement | null>(null)
 let abort: (() => void) | null = null
+// 去抖动渲染器:和 abort 一样提到函数外,stop() 与组件卸载时要能停掉它
+let appender: SmoothAppender | null = null
 
 const drawer = ref(false)
 const current = ref<AskRef | null>(null)
@@ -145,26 +148,39 @@ async function send(text?: string) {
     }
   }
   messages.value.push({ role: 'user', text: q })
-  const msg: Msg = { role: 'assistant', text: '', refs: [], streaming: true }
-  messages.value.push(msg)
+  messages.value.push({ role: 'assistant', text: '', refs: [], streaming: true })
+  // ★ 必须从数组里"读回来"拿到响应式代理。ref([]) 是深层响应式,但 push 进去的是原始对象,
+  //   数组只在读取时才把它包成 proxy —— 直接改 push 前的那个局部变量会绕过 proxy 的 set 陷阱,
+  //   流式期间一个字都不会渲染,直到 streaming.value=false 触发重渲染才整段刷出来。
+  const msg = messages.value[messages.value.length - 1]
   streaming.value = true
   scrollBottom()
+  // delta 的到达间隔很不均匀(实测 0~574ms / 单块 0~47 字),直接 append 会一顿一顿。
+  // 改成"入队 + 按帧匀速出队",真正写进 msg.text 的时机由 rAF 控制。
+  appender = createSmoothAppender((chunk) => {
+    msg.text += chunk
+    scrollBottom()
+  })
   abort = askStream(q, {
     onRefs: (refs) => {
       msg.refs = refs
       scrollBottom()
     },
     onDelta: (t) => {
-      msg.text += t
-      scrollBottom()
+      appender?.push(t)
     },
     onDone: (info) => {
-      msg.streaming = false
       msg.noAnswer = info?.noAnswer
-      streaming.value = false
-      scrollBottom()
+      // 收尾挂在"缓冲区排空后",不是挂在 done 上——
+      // 否则最后一两百毫秒里字还在画,光标已经停了、按钮已经解锁了。
+      appender?.finish(() => {
+        msg.streaming = false
+        streaming.value = false
+        scrollBottom()
+      })
     },
     onError: (e) => {
+      appender?.flushNow()   // 出错就别慢慢画了,剩余一次性吐完
       msg.streaming = false
       streaming.value = false
       msg.text = '出错了:' + e
@@ -175,12 +191,16 @@ async function send(text?: string) {
 
 function stop() {
   abort?.()
+  appender?.cancel()   // 停掉 rAF 循环,丢弃还没画出来的字
   const last = messages.value[messages.value.length - 1]
   if (last) last.streaming = false
   streaming.value = false
 }
 
-onBeforeUnmount(() => abort?.())
+onBeforeUnmount(() => {
+  abort?.()
+  appender?.cancel()   // 否则 rAF 回调会继续操作已卸载组件的状态
+})
 </script>
 
 <style scoped>
