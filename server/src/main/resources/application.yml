@@ -79,3 +79,13 @@ app:
     candidate-k: 20                             # 送入重排的候选数
     request-timeout-secs: 15
     connect-timeout-secs: 10
+logging:
+  file:
+    name: ../logs/server.log
+  charset:
+    file: UTF-8
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7 # 保留 7 个归档
+      file-name-pattern: ../logs/server.%d{yyyy-MM-dd}.%i.log
