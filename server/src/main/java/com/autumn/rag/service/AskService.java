@@ -7,12 +7,15 @@ import com.autumn.rag.dao.CorpusDao.Hit;
 import com.autumn.rag.llm.ChatMessage;
 import com.autumn.rag.llm.ChatProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 
 /**
@@ -28,34 +31,44 @@ import java.util.concurrent.ExecutorService;
 @Service
 public class AskService {
 
+    private static final Logger log = LoggerFactory.getLogger(AskService.class);
+
     private final RetrieveService retrieve;
     private final CorpusDao dao;
     private final ChatProvider chat;
+    private final ChatService chatService;
     private final AppProperties props;
     private final ObjectMapper om;
     private final ExecutorService executor;
 
-    public AskService(RetrieveService retrieve, CorpusDao dao, ChatProvider chat,
+    public AskService(RetrieveService retrieve, CorpusDao dao, ChatProvider chat, ChatService chatService,
                       AppProperties props, ObjectMapper om, ExecutorService executor) {
         this.retrieve = retrieve;
         this.dao = dao;
         this.chat = chat;
+        this.chatService = chatService;
         this.props = props;
         this.om = om;
         this.executor = executor;
     }
 
-    /** 引用卡片(前端点击看原文)。segId>0 时 excerpt 是命中的子段(更精准的预览)。 */
-    public record Ref(long chunkId, String question, String category, String group,
-                      String title, String url, String excerpt) {}
-
     /** 多轮对话的一轮历史(追问改写与回答背景用)。 */
     public record Turn(String q, String a) {}
 
-    public SseEmitter ask(String question, List<Turn> history) {
+    /**
+     * @param sessionId 历史会话 id,**可为 null**——不传就不落历史(方便手动调接口);
+     *                  传了但会话已失效也不会导致回答失败(见 {@link #recordSafely})
+     */
+    public SseEmitter ask(String question, UUID sessionId, List<Turn> history) {
         SseEmitter emitter = new SseEmitter(0L); // 不自动超时,交给 done
         executor.execute(() -> {
             try {
+                // 提问先落库:即使随后关页面、生成中断,问题也留痕。
+                // 存的是**用户的原话**,不是下面改写后的检索词——历史要还原用户看到的东西。
+                if (sessionId != null) {
+                    recordSafely(() -> chatService.recordQuestion(sessionId, question), "提问");
+                }
+
                 // 多轮:追问带指代("那它怎么持久化的?"),先改写成独立问题再检索
                 String searchQuery = question;
                 Turn last = history == null || history.isEmpty() ? null : history.get(history.size() - 1);
@@ -75,15 +88,21 @@ public class AskService {
                 double minRerank = props.retrieval().minRerankScore();
                 if (minSim > 0 && hits.stream().noneMatch(h -> "exact".equals(h.channel()))
                         && topSim < minSim && topRerank < minRerank) {
-                    emit(emitter, "refs", om.writeValueAsString(List.of()));
-                    emit(emitter, "delta", "语料库里没有找到与这个问题相关的内容(当前语料覆盖:"
+                    String refusal = "语料库里没有找到与这个问题相关的内容(当前语料覆盖:"
                             + "Java / MySQL / Redis / 消息队列 / 分布式 / 系统设计 / Linux / Git / Docker)。"
-                            + "为避免误导,我不基于无关材料作答——建议换个问法,或补充题目相关背景。");
+                            + "为避免误导,我不基于无关材料作答——建议换个问法,或补充题目相关背景。";
+                    emit(emitter, "refs", om.writeValueAsString(List.of()));
+                    emit(emitter, "delta", refusal);
+                    // 拒答也是一次"完整的回答",照样落库(refs 为空、noAnswer=true),
+                    // 否则历史里这条会变成有问无答,回看时不知道当时发生了什么
+                    if (sessionId != null) {
+                        recordSafely(() -> chatService.recordAnswer(sessionId, refusal, null, true), "拒答");
+                    }
                     emit(emitter, "done", "{\"noAnswer\":true}");
                     return;
                 }
 
-                List<Ref> refs = new ArrayList<>();
+                List<ChatRef> refs = new ArrayList<>();
                 List<String> context = new ArrayList<>();
                 int perHit = Math.max(300, props.retrieval().contextCharBudget() / Math.max(1, hits.size()) + 200);
                 for (Hit h : hits) {
@@ -95,7 +114,7 @@ public class AskService {
                     String segContent = h.segId() > 0 ? dao.getSegContent(h.segId()) : null;
                     String excerpt = segContent != null ? cut(segContent, 160) : cut(full.content(), 160);
                     int idx = refs.size() + 1;
-                    refs.add(new Ref(full.chunkId(), full.question(), full.category(), full.group(),
+                    refs.add(new ChatRef(full.chunkId(), full.question(), full.category(), full.group(),
                             full.title(), full.url(), excerpt));
                     int bodyBudget = Math.max(400, perHit - (segContent == null ? 0 : segContent.length() + 30));
                     String body = cut(full.content(), bodyBudget);
@@ -106,7 +125,9 @@ public class AskService {
                     context.add(material);
                 }
 
-                emit(emitter, "refs", om.writeValueAsString(refs));
+                // 同一份引用快照,一份推给前端、一份随回答落库(保证回放时卡片不缺)
+                String refsJson = om.writeValueAsString(refs);
+                emit(emitter, "refs", refsJson);
                 String material = String.join("\n\n", context);
                 String userText = (last != null
                         ? "对话背景(上一轮):\n问:" + cut(last.q(), 200) + "\n答:" + cut(last.a(), 600)
@@ -117,7 +138,15 @@ public class AskService {
                 List<ChatMessage> messages = List.of(
                         ChatMessage.system(SYSTEM),
                         ChatMessage.user(userText));
-                chat.chatStream(messages, delta -> emit(emitter, "delta", delta));
+                // 边推给前端边攒全文——落库要的是完整答案
+                StringBuilder answer = new StringBuilder();
+                chat.chatStream(messages, delta -> {
+                    emit(emitter, "delta", delta);
+                    answer.append(delta);
+                });
+                if (sessionId != null) {
+                    recordSafely(() -> chatService.recordAnswer(sessionId, answer.toString(), refsJson, false), "回答");
+                }
                 emit(emitter, "done", "{}");
             } catch (Exception e) {
                 emit(emitter, "error", e.getMessage() == null ? e.toString() : e.getMessage());
@@ -164,6 +193,19 @@ public class AskService {
             return s.isEmpty() || s.length() > 200 ? question : s;
         } catch (Exception e) {
             return question;
+        }
+    }
+
+    /**
+     * 落库失败不能让用户拿不到答案:回答是主功能,历史记录是附加,
+     * 会话 id 失效、库抖动之类都不该把一次成功的问答变成错误。
+     * 但必须走 WARN 日志——静默吞掉的话,历史悄悄丢了没人知道。
+     */
+    private void recordSafely(Runnable action, String what) {
+        try {
+            action.run();
+        } catch (Exception e) {
+            log.warn("{} 落库失败(回答不受影响,仅历史记录缺失): {}", what, e.getMessage());
         }
     }
 

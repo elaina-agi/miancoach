@@ -34,6 +34,35 @@ Content-Type: application/json
 
 {"question": "Vue3 的响应式原理是什么？"}
 
+### ──────────────── 历史会话 ────────────────
+# 完整流程:1d 建会话 → 1e 带上它的 id 提问(这一问一答才会落库) → 1f 列表 → 1g 回放 → 1h 删除
+
+### 1d. 新建会话(标题取首条问题前 30 字,返回 sessionId)
+POST http://localhost:8080/api/chat/session
+Content-Type: application/json
+
+{"firstQuestion": "JVM 内存区域怎么划分？"}
+
+### 1e. 带会话提问(把 <sessionId> 换成 1d 返回的值)
+#    不传 sessionId 也能正常问答,只是不落历史;传了但会话已失效也不会让回答失败(仅 WARN 日志)
+POST http://localhost:8080/api/chat/ask
+Content-Type: application/json
+
+{
+  "question": "JVM 内存区域怎么划分？",
+  "sessionId": "<sessionId>"
+}
+
+### 1f. 会话列表(按最后活跃倒序)
+#    「今天/昨天/更早」的分组在前端按 updatedAt 算——展示逻辑且依赖用户时区,后端不替前端决定
+GET http://localhost:8080/api/chat/sessions?limit=50
+
+### 1g. 回放某会话(消息按写入顺序;refs 已从 JSON 解析成数组)
+GET http://localhost:8080/api/chat/session/<sessionId>
+
+### 1h. 删除会话(消息由外键级联删除;会话不存在返回 404 而非静默成功)
+DELETE http://localhost:8080/api/chat/session/<sessionId>
+
 ### ──────────────── 知识库 ────────────────
 
 ### 2. 题目树(全部 574 题,按板块/类目组织)
