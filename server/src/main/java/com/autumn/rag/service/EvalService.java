@@ -53,7 +53,7 @@ public class EvalService {
                           double exactRecall, double vectorRecall1, double vectorRecall5,
                           String embedModel, boolean embedReal) {}
 
-    public EvalOut selfRecall(int sampleN, int topK) {
+    public EvalOut selfRecall(int sampleN, int topN) {
         indexMeta.assertCompatible(); // 模型对不上时,评出来的数字也是假的,先拦住
 
         List<Question> questions = dao.randomQuestions(sampleN);
@@ -64,7 +64,7 @@ public class EvalService {
                 exact++;
             }
             float[] vector = embed.embed(List.of(q.question())).get(0);
-            List<Hit> hits = dao.vectorTopK(vector, topK);
+            List<Hit> hits = dao.vectorTopK(vector, topN);
             if (!hits.isEmpty() && hits.get(0).chunkId() == q.chunkId()) {
                 hit1++;
             }
@@ -79,14 +79,14 @@ public class EvalService {
     }
 
     // ------------------------------------------------------------------ 新:golden 评测
-    /** 单条未命中的明细,便于分析检索到底漏在哪。rank=0 表示 topK 内没出现。 */
+    /** 单条未命中的明细,便于分析检索到底漏在哪。rank=0 表示 topN 内没出现。 */
     public record MissSample(String kind, String query, String target, int rank, double topSim) {}
 
     /** 单条负样本的明细:给拒答阈值定标用(看域外问题的余弦分/重排分都落在哪)。 */
     public record NegativeSample(String query, double topSim, double rerankScore, boolean rejected) {}
 
     public record GoldenEvalOut(
-            int sampled, int unresolved, int negatives, int topK,
+            int sampled, int unresolved, int negatives, int topN,
             double recall1, double recallK, double mrr,
             double avgLatencyMs, double p95LatencyMs,
             int negativesRejected, double negativeRejectRate, double rejectSim, double rejectRerank,
@@ -107,7 +107,7 @@ public class EvalService {
      * @param rejectSim    负样本判拒的余弦阈值;<0 用配置 app.retrieval.min-vector-sim
      * @param rejectRerank 负样本判拒的重排分阈值;<0 用配置 app.retrieval.min-rerank-score
      */
-    public GoldenEvalOut golden(int n, int topK, String kind, double rejectSim, double rejectRerank) {
+    public GoldenEvalOut golden(int n, int topN, String kind, double rejectSim, double rejectRerank) {
         indexMeta.assertCompatible();
         double threshold = rejectSim >= 0 ? rejectSim : props.retrieval().minVectorSim();
         double rerankThreshold = rejectRerank >= 0 ? rejectRerank : props.retrieval().minRerankScore();
@@ -139,7 +139,7 @@ public class EvalService {
                 continue;
             }
             long t0 = System.currentTimeMillis();
-            List<Hit> hits = retrieve.retrieve(p.query(), topK);
+            List<Hit> hits = retrieve.retrieve(p.query(), topN);
             latencies.add(System.currentTimeMillis() - t0);
 
             int rank = 0;
@@ -172,7 +172,7 @@ public class EvalService {
         List<NegativeSample> negDetail = new ArrayList<>();
         for (Row neg : negatives) {
             long t0 = System.currentTimeMillis();
-            List<Hit> hits = retrieve.retrieve(neg.query(), topK);
+            List<Hit> hits = retrieve.retrieve(neg.query(), topN);
             latencies.add(System.currentTimeMillis() - t0);
             double topSim = topVecSim(hits);
             double topRerank = hits.stream().mapToDouble(Hit::rerankScore).max().orElse(0.0);
@@ -193,7 +193,7 @@ public class EvalService {
         int negN = Math.max(1, negatives.size());
 
         return new GoldenEvalOut(
-                positives.size(), unresolved, negatives.size(), topK,
+                positives.size(), unresolved, negatives.size(), topN,
                 (double) hit1 / posN, (double) hitK / posN, mrrSum / posN,
                 latencies.stream().mapToLong(Long::longValue).average().orElse(0), p95,
                 rejected, (double) rejected / negN, threshold, rerankThreshold,

@@ -15,7 +15,7 @@ GET http://localhost:8080/api/meta
 POST http://localhost:8080/api/chat/ask
 Content-Type: application/json
 
-{"question": "Redis 为什么快？"}
+{"question": "Redis的键过期删除机制是什么样的？"}
 
 ### 1b. 问答:多轮追问(带上轮问答,后端改写指代后检索)
 POST http://localhost:8080/api/chat/ask
@@ -74,7 +74,7 @@ GET http://localhost:8080/api/quiz/session/替换成真实sessionId/report
 GET http://localhost:8080/api/admin/eval?n=20
 
 ### 4b. golden 评测(真实 recall/MRR/拒答率,慢一点)
-GET http://localhost:8080/api/admin/eval?mode=golden&n=50&topK=5
+GET http://localhost:8080/api/admin/eval?mode=golden&n=50&topN=5
 
 ### ──────────────── 管理(慎用) ────────────────
 

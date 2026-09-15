@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 /**
- * 检索增强问答:取 topK 原文当裁判 → 生成带 [n] 引用的流式回答。
+ * 检索增强问答:取 topN 篇原文当裁判 → 生成带 [n] 引用的流式回答。
  *
  * 两道防线:
  * 1. 拒答阈值:向量 top1 相似度低于 app.retrieval.min-vector-sim 时,不调 LLM,
@@ -63,7 +63,7 @@ public class AskService {
                     searchQuery = rewriteFollowUp(last, question);
                 }
 
-                List<Hit> hits = retrieve.retrieve(searchQuery, props.retrieval().topK());
+                List<Hit> hits = retrieve.retrieve(searchQuery, props.retrieval().topN());
 
                 // 防线一:双门槛拒答 —— 向量余弦与 cross-encoder 分同时过低,
                 // 才判"语料库里没有"。余弦分域内外有重叠(实测正样本最低 0.55 / 负样本最高 0.59),

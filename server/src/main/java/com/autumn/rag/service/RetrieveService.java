@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  *   vector  问题向量 → pgvector 余弦近邻,**题目级 + 子段级两路**(parent-child:
  *           子段命中升级到父题,segId 带给生成端做"命中片段前置")
  *   keyword 关键词 ILIKE 兜底(题干/正文)
- * 合并后取前 candidateK 个候选,交给 cross-encoder **统一重排**再截 topK ——
+ * 合并后取前 candidateK 个候选,交给 cross-encoder **统一重排**再截 topN ——
  * 题目级与子段级向量的余弦分数不可比,混池排序会互相挤位(实测混合 recall@1 因此回退),
  * 重排是让多粒度召回公平竞争的裁判;重排挂掉时降级回召回原序,不挡服务。
  *
@@ -52,7 +52,12 @@ public class RetrieveService {
         this.props = props;
     }
 
-    public List<Hit> retrieve(String question, int topK) {
+    /**
+     * @param topN 重排后最终返回的条数(= 进 prompt 的材料数)。
+     *             注意召回宽度由 {@code app.retrieval.vector-k} 独立控制,**不再由 topN 推导** ——
+     *             早期写法是 {@code vecK = max(topN*2, 10)},把"召回多宽"和"输出多少条"耦在了一起。
+     */
+    public List<Hit> retrieve(String question, int topN) {
         indexMeta.assertCompatible();
 
         Set<Long> seen = new LinkedHashSet<>();
@@ -64,11 +69,11 @@ public class RetrieveService {
                 merged.add(h);
             }
         }
-        // 2) 向量:题目级与子段级同池按相似度排序(子段命中升级到父题)
+        // 2) 向量:题目级与子段级各取 vectorK 条,同池按相似度排序(子段命中升级到父题)
         float[] queryVector = embed.embed(List.of(question)).get(0);
-        int vecK = Math.max(topK * 2, 10);
-        List<Hit> vecMerged = new ArrayList<>(dao.vectorTopK(queryVector, vecK));
-        vecMerged.addAll(dao.vectorSegTopK(queryVector, vecK));
+        int vectorK = Math.max(1, props.retrieval().vectorK());
+        List<Hit> vecMerged = new ArrayList<>(dao.vectorTopK(queryVector, vectorK));
+        vecMerged.addAll(dao.vectorSegTopK(queryVector, vectorK));
         vecMerged.sort((a, b) -> Double.compare(b.sim(), a.sim()));
         for (Hit h : vecMerged) {
             if (seen.add(h.chunkId())) {
@@ -77,19 +82,19 @@ public class RetrieveService {
         }
         // 3) 关键词
         for (String token : tokens(question)) {
-            for (Hit h : dao.keywordHits(token, topK)) {
+            for (Hit h : dao.keywordHits(token, topN)) {
                 if (seen.add(h.chunkId())) {
                     merged.add(h);
                 }
             }
         }
-        // 4) 统一重排:候选取前 candidateK,cross-encoder 重新排序后截 topK
-        int candidateK = Math.max(topK, props.rerank().candidateK());
+        // 4) 统一重排:候选取前 candidateK,cross-encoder 重新排序后截 topN
+        int candidateK = Math.max(topN, props.rerank().candidateK());
         List<Hit> candidates = merged.size() > candidateK ? new ArrayList<>(merged.subList(0, candidateK)) : merged;
         if (rerank.isReal() && candidates.size() > 1) {
             candidates = rerank(question, candidates);
         }
-        return candidates.size() > topK ? candidates.subList(0, topK) : candidates;
+        return candidates.size() > topN ? candidates.subList(0, topN) : candidates;
     }
 
     /** cross-encoder 重排;失败降级回召回原序(重排不是正确性的前提,不能因为它挡服务)。 */

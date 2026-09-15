@@ -45,10 +45,26 @@ public record AppProperties(
             int connectTimeoutSecs) {}
 
     /**
+     * 检索三个 K,按漏斗从宽到窄:
+     * <pre>
+     *   vectorK(10)  每路向量召回条数,即打到 pgvector 的 LIMIT(题目级/子段级各取这么多)
+     *      ↓
+     *   candidateK(20)  合并去重后送进 cross-encoder 重排的候选数(见 {@link Rerank})
+     *      ↓
+     *   topN(5)      重排后最终进 prompt 的材料数
+     * </pre>
+     * 必须满足 {@code vectorK ≤ candidateK} 且 {@code topN < candidateK} ——
+     * 否则重排只是给固定的几条换顺序,没法把原本排名靠后的正确答案捞回来。
+     * <p>
+     * 对照主流命名(本项目早期把 topN 叫 topK,与惯例相反,已更正):
+     * vectorK ≈ LlamaIndex {@code similarity_top_k} / LangChain {@code search_kwargs.k};
+     * topN    ≈ Cohere Rerank 与各家 reranker 的 {@code top_n}。
+     * <p>
      * 拒答双门槛:余弦分与重排分**同时**低于阈值才拒(评测的 pos/neg 区间定标)。
      * 余弦分域内外有重叠,重排分(cross-encoder)区分度好得多。
      */
-    public record Retrieval(int topK, int contextCharBudget, double minVectorSim, double minRerankScore) {}
+    public record Retrieval(int vectorK, int topN, int contextCharBudget,
+                            double minVectorSim, double minRerankScore) {}
 
     /**
      * 重排端:cross-encoder 对多路召回统一排序。

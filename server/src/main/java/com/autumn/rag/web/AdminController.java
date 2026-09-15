@@ -45,14 +45,14 @@ public class AdminController {
     @Operation(summary = "检索评测", description = "mode=self 自环回归(旧);mode=golden 去自环评测(recall@k/MRR/负样本拒答定标)")
     @GetMapping("/eval")
     public Object eval(@RequestParam(defaultValue = "20") int n,
-                       @RequestParam(defaultValue = "5") int topK,
+                       @RequestParam(defaultValue = "5") int topN,
                        @RequestParam(defaultValue = "self") String mode,
                        @RequestParam(required = false) String kind,
                        @RequestParam(required = false, defaultValue = "-1") double rejectSim,
                        @RequestParam(required = false, defaultValue = "-1") double rejectRerank) {
         if ("golden".equalsIgnoreCase(mode)) {
-            return evalService.golden(n, topK, kind, rejectSim, rejectRerank);
+            return evalService.golden(n, topN, kind, rejectSim, rejectRerank);
         }
-        return evalService.selfRecall(n, topK);
+        return evalService.selfRecall(n, topN);
     }
 }

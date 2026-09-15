@@ -52,8 +52,16 @@ app:
     connect-timeout-secs: 15
 
   retrieval:
-    top-k: 5
-    # 拼进 prompt 的上下文预算(字符),防超长
+    # 检索漏斗的三个 K,从宽到窄:vector-k → candidate-k(在 app.rerank 下)→ top-n
+    #   vector-k   每路向量召回条数(打到 pgvector 的 LIMIT,题目级/子段级各取这么多)
+    #   candidate-k 合并去重后送进 cross-encoder 重排的候选数,默认 20
+    #   top-n      重排后最终进 prompt 的材料数
+    # 必须 top-n < candidate-k,否则重排只是给固定几条换顺序,捞不回排名靠后的正确答案。
+    # 对照主流命名:vector-k ≈ similarity_top_k / search_kwargs.k;top-n ≈ reranker 的 top_n。
+    # (早期版本把 top-n 命名为 top-k,与行业惯例相反,已更正。)
+    vector-k: ${BAGUWEN_RETRIEVAL_VECTOR_K:10}
+    top-n: ${BAGUWEN_RETRIEVAL_TOP_N:5}
+    # 拼进 prompt 的上下文预算(字符),防超长。top-n 调大时每篇材料分到的字数会等比变少。
     context-char-budget: 8000
     # 拒答双门槛(向量余弦与重排分同时过低才拒;由 golden 评测的 pos/neg 分数区间定标):
     # 实测正样本 cos 最低 0.549/重排分最低 0.0255,纯域外负样本重排分 <0.008、语义沾边 <0.061;
