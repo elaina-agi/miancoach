@@ -1,98 +1,104 @@
 <template>
-  <div class="page chat-page">
-    <!-- 顶部 -->
-    <header class="page-head">
-      <div>
-        <h1>面试问答</h1>
-        <p class="sub">用自己的话提问,答案锚定权威题库原文,可追到出处复习。</p>
-      </div>
-    </header>
+  <div class="chat-layout">
+    <!-- 二级侧栏:历史会话(全局导航左侧已有一级 rail,这里只服务问答页) -->
+    <HistoryRail :sessions="sessions" :active-id="currentSessionId" :disabled="streaming"
+                 @select="loadSession" @remove="removeSession" @new="newSession" />
 
-    <!-- 空态快捷话题 -->
-    <div v-if="messages.length === 0" class="empty">
-      <p class="empty-hint">随便问一道,或从高频考点开始:</p>
-      <div class="topic-grid">
-        <button v-for="t in topics" :key="t" class="topic" @click="send(t)">{{ t }}</button>
-      </div>
-    </div>
+    <div class="page chat-page">
+      <!-- 顶部 -->
+      <header class="page-head">
+        <div>
+          <h1>面试问答</h1>
+          <p class="sub">用自己的话提问,答案锚定权威题库原文,可追到出处复习。</p>
+        </div>
+      </header>
 
-    <!-- 对话流 -->
-    <div ref="listEl" class="thread">
-      <div v-for="(m, i) in messages" :key="i" class="row" :class="m.role">
-        <div class="bubble" :class="m.role">
-          <template v-if="m.role === 'assistant'">
-            <MarkdownView v-if="m.text" :content="m.text" />
-            <!-- 等待期状态:检索中 / 组织回答中。派生自 streaming+refs+text -->
-            <div v-if="pendingLabel(m)" class="status">
-              <span class="status-dot" />{{ pendingLabel(m) }}
-            </div>
-            <div v-if="m.streaming && m.text" class="cursor" />
-            <div v-if="m.noAnswer" class="no-answer">语料外问题 · 已拒绝作答</div>
-            <!-- 引用 -->
-            <div v-if="m.refs?.length" class="refs">
-              <div class="refs-title">出处 {{ m.refs.length }} 篇 · 点击追读原文</div>
-              <div class="refs-grid">
-                <button v-for="(r, j) in m.refs" :key="r.chunkId" class="ref" @click="openRef(r)">
-                  <span class="ref-idx">{{ j + 1 }}</span>
-                  <span class="ref-body">
-                    <span class="ref-q">{{ r.question }}</span>
-                    <span class="ref-meta">{{ r.group }} · {{ r.title }}</span>
-                  </span>
-                </button>
+      <!-- 空态快捷话题 -->
+      <div v-if="messages.length === 0" class="empty">
+        <p class="empty-hint">随便问一道,或从高频考点开始:</p>
+        <div class="topic-grid">
+          <button v-for="t in topics" :key="t" class="topic" @click="send(t)">{{ t }}</button>
+        </div>
+      </div>
+
+      <!-- 对话流 -->
+      <div ref="listEl" class="thread">
+        <div v-for="(m, i) in messages" :key="i" class="row" :class="m.role">
+          <div class="bubble" :class="m.role">
+            <template v-if="m.role === 'assistant'">
+              <MarkdownView v-if="m.text" :content="m.text" />
+              <!-- 等待期状态:检索中 / 组织回答中。派生自 streaming+refs+text -->
+              <div v-if="pendingLabel(m)" class="status">
+                <span class="status-dot" />{{ pendingLabel(m) }}
               </div>
-            </div>
-          </template>
-          <template v-else>
-            <p class="user-text">{{ m.text }}</p>
-          </template>
+              <div v-if="m.streaming && m.text" class="cursor" />
+              <div v-if="m.noAnswer" class="no-answer">语料外问题 · 已拒绝作答</div>
+              <!-- 引用 -->
+              <div v-if="m.refs?.length" class="refs">
+                <div class="refs-title">出处 {{ m.refs.length }} 篇 · 点击追读原文</div>
+                <div class="refs-grid">
+                  <button v-for="(r, j) in m.refs" :key="r.chunkId" class="ref" @click="openRef(r)">
+                    <span class="ref-idx">{{ j + 1 }}</span>
+                    <span class="ref-body">
+                      <span class="ref-q">{{ r.question }}</span>
+                      <span class="ref-meta">{{ r.group }} · {{ r.title }}</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <p class="user-text">{{ m.text }}</p>
+            </template>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 输入 -->
-    <div class="composer-wrap">
-      <div class="composer">
-        <el-input v-model="input" type="textarea" :autosize="{ minRows: 1, maxRows: 5 }"
-                  resize="none" placeholder="输入问题,回车发送(Shift+回车换行)"
-                  @keydown.enter.exact.prevent="send()" />
-        <el-button v-if="!streaming" type="primary" circle class="send-btn" :disabled="!input.trim()" @click="send()">
-          <el-icon :size="16"><Promotion /></el-icon>
-        </el-button>
-        <el-button v-else circle class="stop-btn" @click="stop()">
-          <el-icon :size="15"><VideoPause /></el-icon>
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 追读抽屉 -->
-    <el-drawer v-model="drawer" :size="min(560, windowW * 0.9)" :with-header="false" class="ref-drawer">
-      <div v-if="current" class="ref-panel">
-        <div class="ref-head">
-          <div class="ref-head-tag">{{ current.group }} · {{ current.category || '综合' }}</div>
-          <h2 class="ref-q">{{ current.question }}</h2>
-          <div class="ref-head-meta">{{ current.title }}</div>
-        </div>
-        <div class="ref-body-scroll">
-          <MarkdownView v-if="detail" :content="detail.content" />
-        </div>
-        <div class="ref-foot">
-          <el-button link type="primary" tag="a" :href="current.url" target="_blank">
-            查看原站文章 <el-icon><TopRight /></el-icon>
+      <!-- 输入 -->
+      <div class="composer-wrap">
+        <div class="composer">
+          <el-input v-model="input" type="textarea" :autosize="{ minRows: 1, maxRows: 5 }"
+                    resize="none" placeholder="输入问题,回车发送(Shift+回车换行)"
+                    @keydown.enter.exact.prevent="send()" />
+          <el-button v-if="!streaming" type="primary" circle class="send-btn" :disabled="!input.trim()" @click="send()">
+            <el-icon :size="16"><Promotion /></el-icon>
+          </el-button>
+          <el-button v-else circle class="stop-btn" @click="stop()">
+            <el-icon :size="15"><VideoPause /></el-icon>
           </el-button>
         </div>
       </div>
-    </el-drawer>
+
+      <!-- 追读抽屉 -->
+      <el-drawer v-model="drawer" :size="min(560, windowW * 0.9)" :with-header="false" class="ref-drawer">
+        <div v-if="current" class="ref-panel">
+          <div class="ref-head">
+            <div class="ref-head-tag">{{ current.group }} · {{ current.category || '综合' }}</div>
+            <h2 class="ref-q">{{ current.question }}</h2>
+            <div class="ref-head-meta">{{ current.title }}</div>
+          </div>
+          <div class="ref-body-scroll">
+            <MarkdownView v-if="detail" :content="detail.content" />
+          </div>
+          <div class="ref-foot">
+            <el-button link type="primary" tag="a" :href="current.url" target="_blank">
+              查看原站文章 <el-icon><TopRight /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </el-drawer>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from 'vue'
-import { askStream } from '../api/client'
-import { corpusApi } from '../api/client'
-import type { AskRef, ChunkFull } from '../api/types'
-import { ElMessage } from 'element-plus'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { askStream, chatApi, corpusApi } from '../api/client'
+import type { AskRef, ChatMessageRow, ChatSessionRow, ChunkFull } from '../api/types'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Promotion, VideoPause, TopRight } from '@element-plus/icons-vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import HistoryRail from '../components/HistoryRail.vue'
 import { createSmoothAppender, type SmoothAppender } from '../lib/smoothStream'
 
 interface Msg { role: 'user' | 'assistant'; text: string; refs?: AskRef[]; streaming?: boolean; noAnswer?: boolean }
@@ -114,6 +120,10 @@ let abort: (() => void) | null = null
 // 去抖动渲染器:和 abort 一样提到函数外,stop() 与组件卸载时要能停掉它
 let appender: SmoothAppender | null = null
 
+// 历史会话:currentSessionId 为 null 表示"还没建会话",第一条消息发出时才建(不留空会话)
+const sessions = ref<ChatSessionRow[]>([])
+const currentSessionId = ref<string | null>(null)
+
 const drawer = ref(false)
 const current = ref<AskRef | null>(null)
 const detail = ref<ChunkFull | null>(null)
@@ -132,6 +142,65 @@ function pendingLabel(m: Msg): string | null {
   if (!m.streaming || m.text.length > 0) return null
   return m.refs?.length ? `已找到 ${m.refs.length} 篇材料,正在组织回答…` : '检索题库中…'
 }
+
+// ── 历史会话 ────────────────────────────────────────────────────────
+
+/** 拉会话列表。每轮问答结束后都调一次——标题和"最后活跃时间"都变了。 */
+async function refreshSessions() {
+  try {
+    sessions.value = await chatApi.sessions()
+  } catch {
+    // 历史拉不到不该影响问答主流程,这里不打扰用户;真出问题会在下一次操作时暴露
+  }
+}
+
+/** 后端消息 → 界面消息(字段名不同,且后端省略了 noAnswer=false)。 */
+function toMsg(r: ChatMessageRow): Msg {
+  return { role: r.role, text: r.content, refs: r.refs, noAnswer: r.noAnswer || undefined }
+}
+
+/** 点历史某条:把整段对话读回来,之后的追问接着这个会话走。 */
+async function loadSession(id: string) {
+  if (streaming.value) return
+  try {
+    const rows = await chatApi.messages(id)
+    messages.value = rows.map(toMsg)
+    currentSessionId.value = id
+    scrollBottom()
+  } catch (e) {
+    ElMessage.error('会话加载失败: ' + (e as Error).message)
+  }
+}
+
+/** 新对话:只清界面并置空 id——真正的会话在发出第一条消息时才建,免得留下空会话。 */
+function newSession() {
+  if (streaming.value) return
+  messages.value = []
+  currentSessionId.value = null
+}
+
+async function removeSession(s: ChatSessionRow) {
+  if (streaming.value) return
+  try {
+    await ElMessageBox.confirm(`删除「${s.title}」?对话记录会一并清除,不可恢复。`, '删除会话',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  } catch {
+    return // 用户点了取消
+  }
+  try {
+    await chatApi.remove(s.id)
+    // 删的正好是当前打开的 → 界面也清掉,否则会继续往一个已不存在的会话里写
+    if (currentSessionId.value === s.id) {
+      messages.value = []
+      currentSessionId.value = null
+    }
+    await refreshSessions()
+  } catch (e) {
+    ElMessage.error('删除失败: ' + (e as Error).message)
+  }
+}
+
+// ── 问答 ────────────────────────────────────────────────────────────
 
 async function openRef(r: AskRef) {
   current.value = r
@@ -164,10 +233,20 @@ async function send(text?: string) {
       break
     }
   }
+
+  // 本轮是新对话 → 先建会话。拿不到 id 就只影响历史记录,问答继续(和重排降级同一个思路)。
+  if (!currentSessionId.value) {
+    try {
+      currentSessionId.value = (await chatApi.createSession(q)).sessionId
+    } catch (e) {
+      ElMessage.warning('会话创建失败,本轮问答不会计入历史: ' + (e as Error).message)
+    }
+  }
+
   messages.value.push({ role: 'user', text: q })
   messages.value.push({ role: 'assistant', text: '', refs: [], streaming: true })
   // ★ 必须从数组里"读回来"拿到响应式代理。ref([]) 是深层响应式,但 push 进去的是原始对象,
-  //   数组只在读取时才把它包成 proxy —— 直接改 push 前的那个局部变量会绕过 proxy 的 set 陷阱,
+  //   数组只在读取时才把它包成 proxy —— 直接改 push 前的那个局部变量会绕过 set 陷阱,
   //   流式期间一个字都不会渲染,直到 streaming.value=false 触发重渲染才整段刷出来。
   const msg = messages.value[messages.value.length - 1]
   streaming.value = true
@@ -194,6 +273,7 @@ async function send(text?: string) {
         msg.streaming = false
         streaming.value = false
         scrollBottom()
+        void refreshSessions() // 标题/活跃时间都变了,刷新侧栏
       })
     },
     onError: (e) => {
@@ -202,8 +282,9 @@ async function send(text?: string) {
       streaming.value = false
       msg.text = '出错了:' + e
       ElMessage.error(e)
+      void refreshSessions() // 提问已经落库了(后端在流开始前就存),列表上有它
     },
-  }, history)
+  }, history, currentSessionId.value ?? undefined)
 }
 
 function stop() {
@@ -214,6 +295,8 @@ function stop() {
   streaming.value = false
 }
 
+onMounted(() => void refreshSessions())
+
 onBeforeUnmount(() => {
   abort?.()
   appender?.cancel()   // 否则 rAF 回调会继续操作已卸载组件的状态
@@ -221,7 +304,16 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.chat-page { display: flex; flex-direction: column; height: 100%; max-width: 900px; margin: 0 auto; }
+.chat-layout { display: flex; gap: 22px; height: 100%; }
+.chat-page {
+  flex: 1; min-width: 0; max-width: 940px; margin: 0 auto;
+  display: flex; flex-direction: column; height: 100%;
+}
+/* 窄屏放不下二级侧栏,先让出空间保证对话区可读 */
+@media (max-width: 980px) {
+  .chat-layout :deep(.history) { display: none; }
+}
+
 .page-head { padding-bottom: 10px; }
 h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.4px; }
 .sub { margin: 0; color: var(--text-dim); font-size: 13.5px; }

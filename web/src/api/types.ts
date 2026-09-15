@@ -126,3 +126,24 @@ export interface MetaInfo {
   docs: number
   index: IndexStatus
 }
+
+// ── 问答历史 ──────────────────────────────────────────────────────────
+// updatedAt 是 ISO-8601 UTC(如 "2026-09-15T09:59:20.965Z"),
+// new Date(...) 会自动转成本地时区,按本地日期分组即可。
+
+export interface ChatSessionRow {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChatMessageRow {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  noAnswer: boolean
+  createdAt: string
+  /** 后端配了 non_null,用户消息没有这个 key(不是 null),所以是可选的 */
+  refs?: AskRef[]
+}

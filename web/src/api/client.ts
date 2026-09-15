@@ -1,5 +1,5 @@
 import type {
-  AnswerRow, AskRef, ChunkFull, GradeOut, GroupCounts, GroupNode,
+  AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, GradeOut, GroupCounts, GroupNode,
   MetaInfo, QuizQuestion, ReindexResult, SessionRow, WeakRow,
 } from './types'
 
@@ -21,6 +21,22 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
 
 function post<T>(path: string, body: unknown): Promise<T> {
   return json<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+}
+
+function del<T>(path: string): Promise<T> {
+  return json<T>(path, { method: 'DELETE' })
+}
+
+export const chatApi = {
+  /** 建会话,标题取首条问题前 30 字。返回的 id 随后要随 askStream 传回,那一轮问答才会落历史。 */
+  createSession: (firstQuestion: string) =>
+    post<{ sessionId: string }>('/api/chat/session', { firstQuestion }),
+  /** 会话列表,按最后活跃倒序。「今天/昨天/更早」的分组在前端算(见 HistoryRail)。 */
+  sessions: (limit = 50) => json<ChatSessionRow[]>(`/api/chat/sessions?limit=${limit}`),
+  /** 回放:该会话的全部消息,按写入顺序。 */
+  messages: (id: string) => json<ChatMessageRow[]>(`/api/chat/session/${id}`),
+  /** 删除会话,消息由后端外键级联清除。 */
+  remove: (id: string) => del<{ deleted: boolean }>(`/api/chat/session/${id}`),
 }
 
 export const corpusApi = {
@@ -54,8 +70,13 @@ export interface StreamHandlers {
 /** 多轮追问的一轮历史(后端据此把"它/那个"改写成独立问题再检索)。 */
 export interface HistoryTurn { q: string; a: string }
 
-/** POST /api/chat/ask 并以 SSE 事件驱动回调。返回 abort。 */
-export function askStream(question: string, h: StreamHandlers, history?: HistoryTurn[]): () => void {
+/**
+ * POST /api/chat/ask 并以 SSE 事件驱动回调。返回 abort。
+ *
+ * @param sessionId 历史会话 id。不传也能正常问答,只是这一问一答不落历史。
+ */
+export function askStream(question: string, h: StreamHandlers, history?: HistoryTurn[],
+                          sessionId?: string): () => void {
   const ctrl = new AbortController()
   void (async () => {
     let doneFired = false
@@ -69,7 +90,7 @@ export function askStream(question: string, h: StreamHandlers, history?: History
       const resp = await fetch('/api/chat/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, history: history ?? [] }),
+        body: JSON.stringify({ question, sessionId: sessionId ?? null, history: history ?? [] }),
         signal: ctrl.signal,
       })
       if (!resp.ok) {
