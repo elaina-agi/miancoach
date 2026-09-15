@@ -22,7 +22,11 @@
         <div class="bubble" :class="m.role">
           <template v-if="m.role === 'assistant'">
             <MarkdownView v-if="m.text" :content="m.text" />
-            <div v-if="m.streaming" class="cursor" />
+            <!-- 等待期状态:检索中 / 组织回答中。派生自 streaming+refs+text -->
+            <div v-if="pendingLabel(m)" class="status">
+              <span class="status-dot" />{{ pendingLabel(m) }}
+            </div>
+            <div v-if="m.streaming && m.text" class="cursor" />
             <div v-if="m.noAnswer" class="no-answer">语料外问题 · 已拒绝作答</div>
             <!-- 引用 -->
             <div v-if="m.refs?.length" class="refs">
@@ -115,6 +119,19 @@ const current = ref<AskRef | null>(null)
 const detail = ref<ChunkFull | null>(null)
 const windowW = ref(window.innerWidth)
 function min(a: number, b: number) { return a < b ? a : b }
+
+/**
+ * 等待期的状态文案。**派生自现有状态,不新增 phase 字段**——
+ * 加了字段就要在 onDone/onError/stop 三处记得清空,漏一处状态就卡住;
+ * 派生的话条件不成立自动消失,不可能不同步。
+ *   还没 refs           → 检索题库中(含多轮追问改写那一步,用户不需要区分)
+ *   有 refs 但还没出字   → 已找到 n 篇材料,正在组织回答
+ *   出字了 / 流已结束    → null,状态消失
+ */
+function pendingLabel(m: Msg): string | null {
+  if (!m.streaming || m.text.length > 0) return null
+  return m.refs?.length ? `已找到 ${m.refs.length} 篇材料,正在组织回答…` : '检索题库中…'
+}
 
 async function openRef(r: AskRef) {
   current.value = r
@@ -228,6 +245,9 @@ h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.4px; }
   display: inline-block; width: 2px; height: 1em; vertical-align: -0.15em;
   background: var(--accent); animation: blink 1s step-start infinite;
 }
+.status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: breathe 1.4s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
 .no-answer {
   margin-top: 8px; display: inline-block; font-size: 11.5px; font-weight: 600;
   color: var(--text-dim); background: var(--bg-soft); border: 1px dashed var(--border-strong);
