@@ -16,5 +16,6 @@ web/dist/
 .DS_Store
 Thumbs.db
 # 语料目录大文件之类不入库?此处按需
+docs/flow.md
 # Local-only notes
 /.local-notes/

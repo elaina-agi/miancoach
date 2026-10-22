@@ -79,6 +79,21 @@ app:
     candidate-k: 20                             # 送入重排的候选数
     request-timeout-secs: 15
     connect-timeout-secs: 10
+
+  # ── 账号与验证码 ──
+  auth:
+    # HS256 签名密钥,至少 32 字节(base64 编码)。生成:openssl rand -base64 32
+    # 留空时启动会随机生成一个并打 WARN——能跑,但每次重启所有 token 都会失效,只适合本地开发
+    jwt-secret: ${BAGUWEN_JWT_SECRET:}
+    token-ttl-hours: ${BAGUWEN_TOKEN_TTL_HOURS:168}   # 7 天
+    code-ttl-minutes: 10
+    code-max-attempts: 5
+    code-cooldown-secs: 60
+
+  # ── 发信 ──
+  mail:
+    provider: ${BAGUWEN_MAIL_PROVIDER:auto}   # auto(配了 SMTP 即真实发) | smtp | mock(验证码打到日志)
+    from: ${BAGUWEN_MAIL_FROM:}
 logging:
   file:
     name: ../logs/server.log

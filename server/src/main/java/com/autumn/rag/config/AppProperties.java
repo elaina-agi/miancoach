@@ -13,7 +13,9 @@ public record AppProperties(
         Chat chat,
         Embed embed,
         Retrieval retrieval,
-        Rerank rerank) {
+        Rerank rerank,
+        Auth auth,
+        Mail mail) {
 
     public record Corpus(String dir) {}
 
@@ -79,4 +81,20 @@ public record AppProperties(
             int candidateK,           // 送入重排的候选数(从合并后的召回列表取前 N)
             int requestTimeoutSecs,
             int connectTimeoutSecs) {}
+
+    /**
+     * 账号与验证码。jwtSecret 留空时 JwtService 会随机生成(仅开发用,重启后所有 token 失效)。
+     * 验证码的三个数字共同决定暴力枚举的成本:5 次 / 10 分钟,对一百万种组合基本不可能猜中。
+     */
+    public record Auth(
+            String jwtSecret,
+            int tokenTtlHours,
+            int codeTtlMinutes,
+            int codeMaxAttempts,
+            int codeCooldownSecs) {}
+        
+    /** 发信端,和 chat/embed 同一套 provider 约定。 */
+    public record Mail(
+            String provider,          // auto | smtp | mock
+            String from) {}
 }
