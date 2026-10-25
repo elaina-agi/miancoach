@@ -76,17 +76,19 @@
       <!-- 薄弱聚合 -->
       <section class="card weak">
         <div class="mini-title">薄弱点 · 按板块/类目</div>
-        <table class="weak-t">
-          <thead><tr><th>范围</th><th>作答</th><th>均分</th><th>漏点</th></tr></thead>
-          <tbody>
-            <tr v-for="w in weakness" :key="w.groupTag + w.category">
-              <td>{{ w.groupTag }}<span v-if="w.category" class="dim"> / {{ w.category }}</span></td>
-              <td>{{ w.answered }}</td>
-              <td>{{ w.avgScore ?? '—' }}</td>
-              <td class="missed">{{ w.missed }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="t-scroll">
+          <table class="weak-t">
+            <thead><tr><th>范围</th><th>作答</th><th>均分</th><th>漏点</th></tr></thead>
+            <tbody>
+              <tr v-for="w in weakness" :key="w.groupTag + w.category">
+                <td>{{ w.groupTag }}<span v-if="w.category" class="dim"> / {{ w.category }}</span></td>
+                <td>{{ w.answered }}</td>
+                <td>{{ w.avgScore ?? '—' }}</td>
+                <td class="missed">{{ w.missed }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </template>
   </div>
@@ -208,9 +210,15 @@ onMounted(async () => {
 .weak-t th { color: var(--text-dim); font-weight: 600; font-size: 12px; }
 .weak-t .dim { color: var(--text-faint); }
 .missed { color: var(--warn); font-weight: 600; }
+/* 极窄屏下表格不挤压,横向滚动兜底 */
+.t-scroll { overflow-x: auto; }
 
 @media (max-width: 860px) {
   .two { grid-template-columns: 1fr; }
   .cards { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 720px) {
+  .card { padding: 13px 14px; }
+  .v { font-size: 22px; }
 }
 </style>

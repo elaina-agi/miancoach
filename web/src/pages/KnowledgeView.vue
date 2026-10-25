@@ -51,10 +51,10 @@
       </aside>
 
       <!-- 右:原文 -->
-      <section class="detail-pane">
+      <section ref="detailPaneEl" class="detail-pane">
         <div v-if="!detail" class="placeholder">
           <el-icon :size="44"><Collection /></el-icon>
-          <p>从左侧挑一道题,查看完整标准答案</p>
+          <p>挑一道题,查看完整标准答案</p>
         </div>
         <template v-else>
           <div class="detail-head">
@@ -80,17 +80,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { corpusApi } from '../api/client'
 import type { GroupNode, ChunkFull } from '../api/types'
 import { Search, Collection, TopRight } from '@element-plus/icons-vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import { useIsMobile } from '../lib/responsive'
 
 const tree = ref<GroupNode[]>([])
 const kw = ref('')
 const currentId = ref<number | null>(null)
 const detail = ref<ChunkFull | null>(null)
 const openGroups = ref<string[]>([])
+const detailPaneEl = ref<HTMLElement | null>(null)
+// 窄屏时树和详情变成上下两段,选完题把详情滚进视野,不然用户不知道点没点上
+const isMobile = useIsMobile()
 
 const groupLabels: Record<string, string> = {
   java: 'Java', database: '数据库', architecture: '架构设计', tools: '工具命令', ai: 'AI 大模型',
@@ -138,6 +142,9 @@ async function pick(id: number) {
     detail.value = await corpusApi.chunk(id)
   } catch (e) {
     detail.value = null
+  }
+  if (isMobile.value) {
+    void nextTick(() => detailPaneEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 }
 
@@ -203,5 +210,12 @@ h1 { margin: 0 0 4px; font-size: 24px; }
 @media (max-width: 900px) {
   .kb { grid-template-columns: 1fr; }
   .tree-pane { max-height: 300px; }
+}
+@media (max-width: 720px) {
+  /* 手机上 300px 定高占比失衡,改用视口比例;详情排版同步收紧 */
+  .tree-pane { max-height: 38vh; }
+  .dq { font-size: 16px; }
+  .detail-head { padding: 12px 14px 10px; }
+  .dbody { padding: 12px 14px 24px; }
 }
 </style>

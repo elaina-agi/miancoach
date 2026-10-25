@@ -1,6 +1,31 @@
 <template>
   <div class="shell">
-    <!-- 左导航 -->
+    <!-- 手机端顶栏(桌面隐藏):品牌 + 主题/账号 -->
+    <header class="mobile-topbar">
+      <div class="m-brand" @click="router.push('/chat')">
+        <div class="brand-mark"><el-icon :size="18"><Monitor /></el-icon></div>
+        <span class="m-name">MianCoach</span>
+      </div>
+      <div class="m-actions">
+        <button class="ghost-btn" title="切换深浅色" @click="toggle">
+          <el-icon :size="16"><component :is="isDarkNow ? 'Moon' : 'Sunny'" /></el-icon>
+        </button>
+        <template v-if="authReady">
+          <template v-if="currentUser">
+            <span class="m-account">{{ currentUser.nickname ?? currentUser.email }}</span>
+            <button class="ghost-btn" title="退出登录" @click="onLogout">
+              <el-icon :size="15"><SwitchButton /></el-icon>
+            </button>
+          </template>
+          <button v-else class="login-btn" @click="openLogin()">
+            <el-icon :size="14"><User /></el-icon>
+            <span>登录</span>
+          </button>
+        </template>
+      </div>
+    </header>
+
+    <!-- 左导航(桌面端) -->
     <aside class="rail">
       <div class="brand" @click="router.push('/chat')">
         <div class="brand-mark"><el-icon :size="20"><Monitor /></el-icon></div>
@@ -57,6 +82,15 @@
     <main class="content">
       <router-view />
     </main>
+
+    <!-- 手机端底部标签栏(桌面隐藏) -->
+    <nav class="mobile-tabbar">
+      <router-link v-for="item in items" :key="item.to" :to="item.to"
+                   class="tab" active-class="on">
+        <el-icon :size="20"><component :is="item.icon" /></el-icon>
+        <span>{{ item.label }}</span>
+      </router-link>
+    </nav>
 
     <!-- 全局唯一的登录弹框,任何地方调 requireLogin()/openLogin() 都打开它 -->
     <AuthDialog />
@@ -234,10 +268,80 @@ onMounted(async () => {
   overflow-y: auto;
   padding: 22px 28px 40px;
 }
+
+/* ── 手机端(≤720px):顶栏 + 底部标签栏替代左侧 rail ── */
+.mobile-topbar,
+.mobile-tabbar { display: none; }
+
 @media (max-width: 720px) {
-  .rail { width: 76px; }
-  .brand-text, .nav-item span, .chip, .chip-dim, .account-text, .account-out, .login-btn span { display: none; }
-  .account { justify-content: center; }
-  .nav-item { justify-content: center; }
+  .shell {
+    flex-direction: column;
+    /* dvh 随手机地址栏收展自适应;老浏览器回退 100vh */
+    height: 100vh;
+    height: 100dvh;
+  }
+  .rail { display: none; }
+  .content { padding: 14px 16px 24px; }
+
+  .mobile-topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-panel) 86%, transparent);
+    backdrop-filter: blur(8px);
+  }
+  .m-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    min-width: 0;
+  }
+  .m-name { font-weight: 700; font-size: 16px; letter-spacing: -0.3px; }
+  .m-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .m-account {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .login-btn { width: auto; padding: 6px 12px; }
+
+  .mobile-tabbar {
+    flex: none;
+    display: flex;
+    padding: 4px 8px;
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+    backdrop-filter: blur(8px);
+  }
+  .tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 0 5px;
+    border-radius: 10px;
+    text-decoration: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 500;
+    transition: color var(--t-fast) var(--ease);
+  }
+  .tab.on { color: var(--accent); }
 }
 </style>

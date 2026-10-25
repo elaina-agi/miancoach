@@ -92,3 +92,21 @@ button,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── 手机端全局兜底(≤720px) ── */
+@media (max-width: 720px) {
+  /* iOS Safari 会对字号 <16px 的输入框聚焦时自动放大页面,手机上统一提到 16px */
+  .el-input__inner,
+  .el-textarea__inner {
+    font-size: 16px;
+  }
+  /* ElMessage 默认 min-width:380px、ElMessageBox 默认 420px 定宽,手机上必然溢出 */
+  .el-message {
+    min-width: 0;
+    max-width: calc(100vw - 28px);
+    box-sizing: border-box;
+  }
+  .el-message-box {
+    max-width: calc(100vw - 28px);
+  }
+}

@@ -187,3 +187,13 @@ function onClosed() {
 .auth-switch a:hover { text-decoration: underline; }
 .auth-dev { margin: 10px 0 0; font-size: 11px; color: var(--text-faint); text-align: center; }
 </style>
+
+<!-- el-dialog 传送到 body,scoped 样式够不到;窄屏时把 400px 定宽压回视口内 -->
+<style>
+@media (max-width: 720px) {
+  .auth-dialog {
+    max-width: calc(100vw - 28px);
+  }
+  .auth-dialog .code-row .el-button { width: 104px; }
+}
+</style>

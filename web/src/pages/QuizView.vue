@@ -193,4 +193,10 @@ onMounted(async () => {
 .mock-note { font-size: 12px; color: var(--warn); }
 .std-row { margin-top: 8px; }
 .std { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; }
+
+@media (max-width: 720px) {
+  .card { padding: 14px 14px; }
+  .qq { font-size: 17px; }
+  .act-row { flex-wrap: wrap; }
+}
 </style>

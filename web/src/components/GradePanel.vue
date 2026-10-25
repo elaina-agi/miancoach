@@ -36,7 +36,7 @@ defineProps<{
 
 <style scoped>
 .grade-panel { display: flex; flex-direction: column; gap: 14px; }
-.big-row { display: flex; align-items: center; gap: 20px; }
+.big-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .sum { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .sum-line { font-weight: 500; }
 .sum-line.ok { color: var(--accent); }

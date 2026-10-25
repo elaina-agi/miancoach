@@ -1,7 +1,12 @@
 <template>
   <div class="chat-layout">
-    <!-- 二级侧栏:历史会话(全局导航左侧已有一级 rail,这里只服务问答页) -->
-    <HistoryRail :sessions="sessions" :active-id="currentSessionId" :disabled="streaming"
+    <!-- 二级侧栏:历史会话。桌面端内嵌在左;窄屏(≤980px)挪进抽屉,从顶栏按钮唤出 -->
+    <el-drawer v-if="isNarrow" v-model="histOpen" direction="ltr" :size="min(300, windowW * 0.82)"
+               :with-header="false" class="hist-drawer">
+      <HistoryRail :sessions="sessions" :active-id="currentSessionId" :disabled="streaming"
+                   @select="selectFromDrawer" @remove="removeSession" @new="newFromDrawer" />
+    </el-drawer>
+    <HistoryRail v-else :sessions="sessions" :active-id="currentSessionId" :disabled="streaming"
                  @select="loadSession" @remove="removeSession" @new="newSession" />
 
     <div class="page chat-page">
@@ -11,6 +16,10 @@
           <h1>面试问答</h1>
           <p class="sub">用自己的话提问,答案锚定权威题库原文,可追到出处复习。</p>
         </div>
+        <button v-if="isNarrow" class="hist-toggle" @click="histOpen = true">
+          <el-icon :size="14"><Clock /></el-icon>
+          历史会话
+        </button>
       </header>
 
       <!-- 空态快捷话题 -->
@@ -96,9 +105,10 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { askStream, chatApi, corpusApi } from '../api/client'
 import type { AskRef, ChatMessageRow, ChatSessionRow, ChunkFull } from '../api/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Promotion, VideoPause, TopRight } from '@element-plus/icons-vue'
+import { Promotion, VideoPause, TopRight, Clock } from '@element-plus/icons-vue'
 import MarkdownView from '../components/MarkdownView.vue'
 import HistoryRail from '../components/HistoryRail.vue'
+import { useMediaQuery } from '../lib/responsive'
 import { createSmoothAppender, type SmoothAppender } from '../lib/smoothStream'
 
 interface Msg { role: 'user' | 'assistant'; text: string; refs?: AskRef[]; streaming?: boolean; noAnswer?: boolean }
@@ -129,6 +139,20 @@ const current = ref<AskRef | null>(null)
 const detail = ref<ChunkFull | null>(null)
 const windowW = ref(window.innerWidth)
 function min(a: number, b: number) { return a < b ? a : b }
+
+// 窄屏(≤980px)时二级侧栏挪进抽屉,断点与桌面端内嵌 HistoryRail 的隐藏点保持一致
+const isNarrow = useMediaQuery('(max-width: 980px)')
+const histOpen = ref(false)
+
+/** 抽屉里点某条会话:先收抽屉再加载,加载失败也不把抽屉弹回来 */
+function selectFromDrawer(id: string) {
+  histOpen.value = false
+  void loadSession(id)
+}
+function newFromDrawer() {
+  histOpen.value = false
+  newSession()
+}
 
 /**
  * 等待期的状态文案。**派生自现有状态,不新增 phase 字段**——
@@ -295,9 +319,18 @@ function stop() {
   streaming.value = false
 }
 
-onMounted(() => void refreshSessions())
+/** 抽屉宽度按视口算,手机横竖屏切换、桌面拉伸窗口时跟着变 */
+function onWinResize() {
+  windowW.value = window.innerWidth
+}
+
+onMounted(() => {
+  window.addEventListener('resize', onWinResize)
+  void refreshSessions()
+})
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', onWinResize)
   abort?.()
   appender?.cancel()   // 否则 rAF 回调会继续操作已卸载组件的状态
 })
@@ -309,14 +342,31 @@ onBeforeUnmount(() => {
   flex: 1; min-width: 0; max-width: 940px; margin: 0 auto;
   display: flex; flex-direction: column; height: 100%;
 }
-/* 窄屏放不下二级侧栏,先让出空间保证对话区可读 */
-@media (max-width: 980px) {
-  .chat-layout :deep(.history) { display: none; }
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
 }
-
-.page-head { padding-bottom: 10px; }
 h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.4px; }
 .sub { margin: 0; color: var(--text-dim); font-size: 13.5px; }
+/* 窄屏唤出历史会话抽屉的按钮;桌面端历史常驻侧栏,不渲染 */
+.hist-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.hist-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
 .thread { flex: 1; overflow-y: auto; padding: 8px 2px 16px; display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; }
@@ -392,4 +442,21 @@ h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.4px; }
 .ref-head-meta { color: var(--text-faint); font-size: 12px; }
 .ref-body-scroll { flex: 1; overflow-y: auto; padding: 14px 2px; }
 .ref-foot { border-top: 1px solid var(--border); padding-top: 10px; }
+
+@media (max-width: 720px) {
+  h1 { font-size: 20px; }
+  .sub { display: none; }
+  .bubble { max-width: 94%; }
+  .topic-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<style>
+/* el-drawer 把内容传送到 body 外,scoped 样式够不到抽屉体和 HistoryRail,这里用全局样式覆盖:
+   撑满抽屉、去掉内嵌时的右边框;删除按钮桌面端靠 hover 显形,手机没有 hover,常显 */
+.hist-drawer .el-drawer__body { padding: 12px 14px; }
+.hist-drawer .history { width: 100%; border-right: 0; padding-right: 0; }
+@media (max-width: 720px) {
+  .hist-drawer .hist-del { opacity: 1; }
+}
 </style>
