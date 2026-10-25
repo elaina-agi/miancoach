@@ -17,6 +17,21 @@ spring:
     enabled: true
   jackson:
     default-property-inclusion: non_null
+  # SMTP 发信(验证码)。默认值对应 Resend;换服务商(阿里云邮件推送等)只改这几项,不改代码。
+  # 是否真发由 app.mail.provider 决定:auto 时有 password 才真发。
+  mail:
+    host: ${BAGUWEN_SMTP_HOST:smtp.resend.com}
+    port: ${BAGUWEN_SMTP_PORT:465}
+    username: ${BAGUWEN_SMTP_USERNAME:resend}       # Resend 固定是 resend
+    password: ${BAGUWEN_SMTP_PASSWORD:}             # Resend 的 API key(re_ 开头),只放 .env
+    default-encoding: UTF-8
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.ssl.enable]": true                # 465 是隐式 TLS,连上就加密;国内云服务器通常封 25 端口
+      # 不设超时的话,SMTP 服务器无响应时发信线程会一直卡住
+      "[mail.smtp.connectiontimeout]": 10000
+      "[mail.smtp.timeout]": 10000
+      "[mail.smtp.writetimeout]": 10000
 
 server:
   port: 8080
@@ -90,10 +105,11 @@ app:
     code-max-attempts: 5
     code-cooldown-secs: 60
 
-  # ── 发信 ──
+  # ── 发信 ── SMTP 服务器与账号在上面的 spring.mail
   mail:
-    provider: ${BAGUWEN_MAIL_PROVIDER:auto}   # auto(配了 SMTP 即真实发) | smtp | mock(验证码打到日志)
-    from: ${BAGUWEN_MAIL_FROM:}
+    provider: ${BAGUWEN_MAIL_PROVIDER:auto}   # auto(配了 SMTP 密码即真实发) | smtp | mock(验证码打到日志)
+    from: ${BAGUWEN_MAIL_FROM:}               # 只填地址,如 noreply@example.com;必须属于 Resend 里验证过的域名
+    from-name: 面试陪练                        # 收件箱里显示的发件人名。写在这里而不是 .env:.env 里的中文会乱码
 logging:
   file:
     name: ../logs/server.log

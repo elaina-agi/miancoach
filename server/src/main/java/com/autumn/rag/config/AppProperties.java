@@ -93,8 +93,12 @@ public record AppProperties(
             int codeMaxAttempts,
             int codeCooldownSecs) {}
         
-    /** 发信端,和 chat/embed 同一套 provider 约定。 */
+    /**
+     * 发信端,和 chat/embed 同一套 provider 约定。SMTP 服务器/账号/密码用 Spring 自带的 spring.mail.*。
+     * from 只放地址;fromName 是收件箱里显示的发件人名,放 yml 而不是 .env(.env 里写中文会乱码)。
+     */
     public record Mail(
             String provider,          // auto | smtp | mock
-            String from) {}
+            String from,
+            String fromName) {}
 }
