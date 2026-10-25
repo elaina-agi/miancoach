@@ -2,12 +2,14 @@ package com.autumn.rag.corpus;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** 切题规则:叶子级标题 = 一道题;两套标题结构(h2类目+h3题 / h2直接当题)都要兼容。 */
 class MdParserTest {
@@ -54,6 +56,9 @@ class MdParserTest {
 
     @Test
     void 真实语料全量可解析且题数正确() throws Exception {
+        // corpus/ 不入库(版权),刚 clone 下来还没跑爬虫时没有语料:跳过而不是失败
+        assumeTrue(Files.isRegularFile(CORPUS.resolve("interview/database/redis.md")),
+                "corpus/ 不存在,先运行 python -m crawler.main 生成语料");
         // 用真实语料抽查:redis.md 68 题 / systemdesign.md 14 题(README 数字),防解析回归
         List<MdParser.Section> redis = MdParser.parse(CORPUS.resolve("interview/database/redis.md").toAbsolutePath(), "database").sections();
         List<MdParser.Section> sd = MdParser.parse(CORPUS.resolve("interview/architecture/systemdesign.md").toAbsolutePath(), "architecture").sections();

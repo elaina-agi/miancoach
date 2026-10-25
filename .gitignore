@@ -15,7 +15,13 @@ web/dist/
 *.iml
 .DS_Store
 Thumbs.db
-# 语料目录大文件之类不入库?此处按需
-docs/flow.md
+# 语料:爬取的第三方原文,版权归原作者,不入库;clone 后运行爬虫生成(见 README)
+# 开头的 / 表示只匹配仓库根目录:不加的话会连 server/.../rag/corpus/ 这个 Java 包一起忽略
+/corpus/
+# 个人文档/笔记,不入库
+/docs/
+# Python 编译缓存
+__pycache__/
+*.pyc
 # Local-only notes
 /.local-notes/
