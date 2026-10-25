@@ -2,6 +2,7 @@ package com.autumn.rag.common;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -22,6 +23,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "error", e.getMessage(),
                 "hint", "POST /api/admin/reindex"));
+    }
+
+    /** 未登录 / 登录失败 / token 无效。前端收到 401 统一跳登录页。 */
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<Map<String, String>> unauthorized(AuthException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+    }
+
+    /** 验证码冷却 / 限流。前端收到 429 显示倒计时,而不是当成普通错误。 */
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<Map<String, String>> tooMany(TooManyRequestsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("error", e.getMessage()));
+    }
+
+    /** 请求体不是合法 JSON(少括号、类型不对)。不处理的话会落到下面的兜底,变成 500 并带出解析器的内部报错。 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> unreadable(HttpMessageNotReadableException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", "请求体格式错误"));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
