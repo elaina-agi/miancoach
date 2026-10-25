@@ -74,7 +74,7 @@ const groups = ref<GroupCounts>({})
 const scope = ref<string>('__all__')
 
 const groupLabels: Record<string, string> = {
-  java: 'Java', database: '数据库', architecture: '架构设计', tools: '工具命令',
+  java: 'Java', database: '数据库', architecture: '架构设计', tools: '工具命令', ai: 'AI 大模型',
 }
 
 const scopes = computed(() => [

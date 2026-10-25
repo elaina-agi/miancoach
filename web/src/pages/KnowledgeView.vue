@@ -93,7 +93,7 @@ const detail = ref<ChunkFull | null>(null)
 const openGroups = ref<string[]>([])
 
 const groupLabels: Record<string, string> = {
-  java: 'Java', database: '数据库', architecture: '架构设计', tools: '工具命令',
+  java: 'Java', database: '数据库', architecture: '架构设计', tools: '工具命令', ai: 'AI 大模型',
 }
 
 const allQuestions = computed(() => {
@@ -123,7 +123,7 @@ function countGroup(group: string) {
 }
 function gLabel(g: string) { return groupLabels[g] || g }
 function groupColor(g: string): string {
-  const map: Record<string, string> = { java: 'var(--accent)', database: 'var(--info)', architecture: 'var(--warn)', tools: 'var(--text-dim)' }
+  const map: Record<string, string> = { java: 'var(--accent)', database: 'var(--info)', architecture: 'var(--warn)', tools: 'var(--text-dim)', ai: 'var(--danger)' }
   return map[g] || 'var(--accent)'
 }
 function toggleGroup(g: string) {
