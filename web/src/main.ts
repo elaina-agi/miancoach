@@ -14,10 +14,13 @@ import { createApp } from 'vue'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import { initTheme } from './lib/theme'
+import { initAuth } from './lib/auth'
 import App from './App.vue'
 import router from './router'
 
 initTheme()
+// 不 await:页面先渲染,token 换用户信息在后台进行(期间侧栏账号区留空,见 AppShell)
+void initAuth()
 
 const app = createApp(App)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {

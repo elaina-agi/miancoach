@@ -19,6 +19,26 @@
         </router-link>
       </nav>
 
+      <!-- 账号:游客显示登录入口,已登录显示昵称。authReady 之前什么都不显示,免得已登录用户看到"登录"闪一下 -->
+      <div v-if="authReady" class="account">
+        <template v-if="currentUser">
+          <div class="avatar">{{ initial }}</div>
+          <div class="account-text">
+            <span class="account-name">{{ currentUser.nickname ?? currentUser.email }}</span>
+            <span v-if="currentUser.nickname" class="account-sub">{{ currentUser.email }}</span>
+          </div>
+          <el-tooltip content="退出登录" placement="top" :show-after="200">
+            <button class="ghost-btn account-out" @click="onLogout">
+              <el-icon :size="15"><SwitchButton /></el-icon>
+            </button>
+          </el-tooltip>
+        </template>
+        <button v-else class="login-btn" @click="openLogin()">
+          <el-icon :size="16"><User /></el-icon>
+          <span>登录 / 注册</span>
+        </button>
+      </div>
+
       <div class="rail-foot">
         <el-tooltip :content="chip.tip" placement="top" :show-after="200">
           <div class="chip" :class="chip.cls">
@@ -37,16 +57,24 @@
     <main class="content">
       <router-view />
     </main>
+
+    <!-- 全局唯一的登录弹框,任何地方调 requireLogin()/openLogin() 都打开它 -->
+    <AuthDialog />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChatDotRound, Collection, Aim, DataAnalysis, Monitor, Moon, Sunny } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import {
+  ChatDotRound, Collection, Aim, DataAnalysis, Monitor, Moon, Sunny, SwitchButton, User,
+} from '@element-plus/icons-vue'
 import { corpusApi } from '../api/client'
 import type { MetaInfo, GroupCounts } from '../api/types'
 import { isDark, toggleTheme } from '../lib/theme'
+import { authReady, currentUser, logout, openLogin } from '../lib/auth'
+import AuthDialog from './AuthDialog.vue'
 
 const router = useRouter()
 const items = [
@@ -87,6 +115,17 @@ const chip = computed(() => {
 function toggle() {
   toggleTheme()
   isDarkNow.value = isDark()
+}
+
+/** 头像里的字:昵称首字,没昵称用邮箱首字母 */
+const initial = computed(() => {
+  const u = currentUser.value
+  return (u?.nickname || u?.email || '?').charAt(0).toUpperCase()
+})
+
+function onLogout() {
+  logout()
+  ElMessage.success('已退出登录')
 }
 
 onMounted(async () => {
@@ -153,6 +192,24 @@ onMounted(async () => {
   margin-left: auto; font-size: 11px; color: var(--text-faint);
 }
 
+.account { display: flex; align-items: center; gap: 10px; padding: 10px 6px; min-height: 52px; }
+.avatar {
+  width: 32px; height: 32px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 700; font-size: 14px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.account-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; flex: 1; }
+.account-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-sub { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-out { flex: none; }
+.login-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: transparent; color: var(--text); font-weight: 500; cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.login-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 .rail-foot { display: flex; align-items: center; gap: 8px; padding: 8px 6px 0; border-top: 1px solid var(--border); }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -179,7 +236,8 @@ onMounted(async () => {
 }
 @media (max-width: 720px) {
   .rail { width: 76px; }
-  .brand-text, .nav-item span, .chip, .chip-dim { display: none; }
+  .brand-text, .nav-item span, .chip, .chip-dim, .account-text, .account-out, .login-btn span { display: none; }
+  .account { justify-content: center; }
   .nav-item { justify-content: center; }
 }
 </style>

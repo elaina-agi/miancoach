@@ -147,3 +147,18 @@ export interface ChatMessageRow {
   /** 后端配了 non_null,用户消息没有这个 key(不是 null),所以是可选的 */
   refs?: AskRef[]
 }
+
+// ── 账号 ──────────────────────────────────────────────────────────────
+
+export interface UserView {
+  id: string
+  email: string
+  /** 没填昵称时后端不返回这个 key(non_null) */
+  nickname?: string
+  role: 'USER' | 'ADMIN'
+}
+
+export interface LoginOut {
+  token: string
+  user: UserView
+}

@@ -1,12 +1,25 @@
 import type {
   AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, GradeOut, GroupCounts, GroupNode,
-  MetaInfo, QuizQuestion, ReindexResult, SessionRow, WeakRow,
+  LoginOut, MetaInfo, QuizQuestion, ReindexResult, SessionRow, UserView, WeakRow,
 } from './types'
+import { clearSession, token } from '../lib/session'
+
+/** 带 HTTP 状态码的错误:调用方要区分 429(显示倒计时)和其它失败时用得上。 */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+  }
+}
+
+/** 已登录就带上 token;游客什么都不带,后端按游客处理。 */
+function authHeaders(): Record<string, string> {
+  return token.value ? { Authorization: `Bearer ${token.value}` } : {}
+}
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
   })
   if (!resp.ok) {
     let msg = `${resp.status} ${resp.statusText}`
@@ -14,7 +27,10 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
       const body = await resp.json()
       if (body && body.error) msg = body.error
     } catch { /* ignore */ }
-    throw new Error(msg)
+    // 带了 token 还被 401:token 过期或用户已删,本地登录态作废。
+    // 没带 token 的 401(比如登录时密码错)不是登录态的问题,不能清
+    if (resp.status === 401 && token.value) clearSession()
+    throw new ApiError(msg, resp.status)
   }
   return resp.json() as Promise<T>
 }
@@ -37,6 +53,15 @@ export const chatApi = {
   messages: (id: string) => json<ChatMessageRow[]>(`/api/chat/session/${id}`),
   /** 删除会话,消息由后端外键级联清除。 */
   remove: (id: string) => del<{ deleted: boolean }>(`/api/chat/session/${id}`),
+}
+
+export const authApi = {
+  /** 发注册验证码。邮箱是否已注册返回都一样;60 秒内重复发 → 429 */
+  sendCode: (email: string) => post<{ sent: boolean }>('/api/auth/code', { email }),
+  register: (email: string, code: string, password: string, nickname?: string) =>
+    post<LoginOut>('/api/auth/register', { email, code, password, nickname: nickname || null }),
+  login: (email: string, password: string) => post<LoginOut>('/api/auth/login', { email, password }),
+  me: () => json<UserView>('/api/auth/me'),
 }
 
 export const corpusApi = {
@@ -89,7 +114,7 @@ export function askStream(question: string, h: StreamHandlers, history?: History
     try {
       const resp = await fetch('/api/chat/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ question, sessionId: sessionId ?? null, history: history ?? [] }),
         signal: ctrl.signal,
       })
