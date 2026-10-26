@@ -1,5 +1,7 @@
 # ── 构建:先只拷 pom 拉依赖,单独成层;只改代码时这一层命中缓存,不用重新下载 ──
-FROM maven:3.9-eclipse-temurin-17 AS build
+# $BUILDPLATFORM:编译在 CI 机器的原生架构上跑,jar 与 CPU 架构无关;只有下面的运行镜像按目标架构(arm64)出,
+# 免得 Maven 在 QEMU 模拟下跑,慢好几倍
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /src
 COPY pom.xml .
 RUN mvn -B -ntp dependency:go-offline

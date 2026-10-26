@@ -1,5 +1,6 @@
 # ── 构建:pnpm 版本与本地一致(node_modules/.modules.yaml 记的是 pnpm@10) ──
-FROM node:22-alpine AS build
+# $BUILDPLATFORM:同 server,产物是静态文件,在 CI 原生架构上构建即可
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /src
 RUN npm install -g pnpm@10
 COPY package.json pnpm-lock.yaml ./
