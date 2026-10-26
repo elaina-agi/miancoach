@@ -16,7 +16,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /** 模拟面试:抽题 → 以标准原文为基准批改(LLM 结构化评分)→ 落库 → 复盘聚合。 */
@@ -46,12 +49,23 @@ public class QuizService {
     @Transactional
     public StartOut start(String groupTag) {
         UUID session = quizDao.createSession(groupTag);
-        return pick(session, groupTag);
+        return pick(session, groupTag, List.of());
     }
 
+    /**
+     * 抽下一题,同一场里不重复:跳过本场已作答的题,以及前端传来的 exclude(出过但被跳过、没作答的题)。
+     * 范围内的题全出过一遍后放开限制,允许重复,而不是报错让面试进行不下去。
+     */
     @Transactional
-    public StartOut pick(UUID sessionId, String groupTag) {
-        Question q = corpusDao.randomQuestion(groupTag);
+    public StartOut pick(UUID sessionId, String groupTag, List<Long> exclude) {
+        Set<Long> seen = new LinkedHashSet<>(quizDao.answeredChunkIds(sessionId));
+        if (exclude != null) {
+            exclude.stream().filter(Objects::nonNull).forEach(seen::add);
+        }
+        Question q = corpusDao.randomQuestion(groupTag, List.copyOf(seen));
+        if (q == null && !seen.isEmpty()) {
+            q = corpusDao.randomQuestion(groupTag);
+        }
         if (q == null) {
             throw new NotFoundException("库里还没有题,请先 /api/admin/reindex 入库");
         }

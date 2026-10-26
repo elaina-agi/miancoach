@@ -10,6 +10,8 @@ import org.springframework.stereotype.Repository;
 import java.sql.PreparedStatement;
 import java.sql.Types;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -179,14 +181,28 @@ public class CorpusDao {
     }
 
     public Question randomQuestion(String group) {
+        return randomQuestion(group, List.of());
+    }
+
+    /** 随机抽一题,跳过 exclude 里的题(同一场面试里已出过的)。没有可抽的返回 null,由调用方决定是否放开限制。 */
+    public Question randomQuestion(String group, List<Long> exclude) {
+        List<String> where = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        if (group != null && !group.isBlank()) {
+            where.add("d.group_tag = ?");
+            args.add(group);
+        }
+        if (!exclude.isEmpty()) {
+            where.add("c.id NOT IN (" + String.join(",", Collections.nCopies(exclude.size(), "?")) + ")");
+            args.addAll(exclude);
+        }
         String sql = "SELECT c.id, d.group_tag, c.category, c.question FROM chunk c "
                 + "JOIN doc d ON d.id = c.doc_id "
-                + (group == null || group.isBlank() ? "" : "WHERE d.group_tag = ? ")
+                + (where.isEmpty() ? "" : "WHERE " + String.join(" AND ", where) + " ")
                 + "ORDER BY random() LIMIT 1";
-        Object[] args = (group == null || group.isBlank()) ? new Object[0] : new Object[]{group};
         return jdbc.query(sql, rs -> rs.next() ? new Question(
                 rs.getLong("id"), rs.getString("group_tag"), rs.getString("category"),
-                rs.getString("question")) : null, args);
+                rs.getString("question")) : null, args.toArray());
     }
 
     /** 随机取 n 道题(评测抽样本用)。 */

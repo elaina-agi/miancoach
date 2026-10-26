@@ -51,6 +51,12 @@ public class QuizDao {
                 limit);
     }
 
+    /** 某场已出过的题(作答过的),再抽题时跳过。 */
+    public List<Long> answeredChunkIds(UUID sessionId) {
+        return jdbc.queryForList("SELECT chunk_id FROM quiz_answer WHERE session_id = ? AND chunk_id IS NOT NULL",
+                Long.class, sessionId);
+    }
+
     public List<AnswerRow> answers(UUID sessionId) {
         return jdbc.query("SELECT id, chunk_id, group_tag, category, question, user_answer, score, "
                         + "grade::text AS grade_json, created_at "

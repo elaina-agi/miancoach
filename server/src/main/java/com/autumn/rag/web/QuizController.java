@@ -32,7 +32,8 @@ public class QuizController {
         this.quizService = quizService;
     }
 
-    public record ScopeReq(String groupTag) {}
+    /** exclude:本场出过但没作答的题(点了「换一题」),再抽时跳过;已作答的后端自己查 */
+    public record ScopeReq(String groupTag, List<Long> exclude) {}
 
     public record StartResp(UUID sessionId, Long chunkId, String group, String category, String question) {}
 
@@ -47,7 +48,8 @@ public class QuizController {
     @Operation(summary = "在当前会话里抽下一题")
     @PostMapping("/session/{id}/pick")
     public QuizService.StartOut pick(@PathVariable UUID id, @RequestBody(required = false) ScopeReq body) {
-        return quizService.pick(id, body == null ? null : body.groupTag());
+        return body == null ? quizService.pick(id, null, List.of())
+                : quizService.pick(id, body.groupTag(), body.exclude());
     }
 
     @Operation(summary = "批改一题(以标准原文为基准,结构化评分),落库")
