@@ -148,8 +148,12 @@ public class QuizService {
     }
 
     // ------------------------------------------------------------------ 复盘
-    public List<SessionRow> sessions(int limit) {
-        return quizDao.sessions(limit);
+    public List<SessionRow> sessions(int limit, boolean answeredOnly) {
+        return quizDao.sessions(limit, answeredOnly);
+    }
+
+    public QuizDao.Overview overview() {
+        return quizDao.overview();
     }
 
     public List<AnswerRow> sessionAnswers(UUID sessionId) {

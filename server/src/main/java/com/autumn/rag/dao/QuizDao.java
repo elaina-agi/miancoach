@@ -18,13 +18,18 @@ public class QuizDao {
         this.jdbc = jdbc;
     }
 
-    public record SessionRow(UUID id, String groupTag, String status, Instant createdAt) {}
+    /** answered = 已作答题数;avgScore 只算有分数的题(mock 批改没有分),一题都没评分时为 null。 */
+    public record SessionRow(UUID id, String groupTag, String status, Instant createdAt,
+                             long answered, Double avgScore) {}
 
     public record AnswerRow(long id, Long chunkId, String groupTag, String category,
                             String question, String userAnswer, Integer score, String gradeJson,
                             Instant createdAt) {}
 
     public record WeakRow(String groupTag, String category, long answered, Double avgScore, long missed) {}
+
+    /** 复盘页顶部的总览:只统计真正答过题的场次,开了就走的空场次不算。 */
+    public record Overview(long sessions, long answered, Double avgScore, long missed) {}
 
     // ------------------------------------------------------------------ 写入
     public UUID createSession(String groupTag) {
@@ -43,11 +48,17 @@ public class QuizDao {
     }
 
     // ------------------------------------------------------------------ 读
-    public List<SessionRow> sessions(int limit) {
-        return jdbc.query("SELECT id, group_tag, status, created_at FROM quiz_session "
-                        + "ORDER BY created_at DESC LIMIT ?",
+    /** answeredOnly:只要答过题的场次。抽了题没答就离开的场次很多,复盘列表里全是空行没有意义。 */
+    public List<SessionRow> sessions(int limit, boolean answeredOnly) {
+        return jdbc.query("SELECT s.id, s.group_tag, s.status, s.created_at, "
+                        + "count(a.id) AS answered, ROUND(AVG(a.score)::numeric, 1) AS avg_score "
+                        + "FROM quiz_session s LEFT JOIN quiz_answer a ON a.session_id = s.id "
+                        + "GROUP BY s.id "
+                        + (answeredOnly ? "HAVING count(a.id) > 0 " : "")
+                        + "ORDER BY s.created_at DESC LIMIT ?",
                 (rs, i) -> new SessionRow(rs.getObject("id", UUID.class), rs.getString("group_tag"),
-                        rs.getString("status"), rs.getTimestamp("created_at").toInstant()),
+                        rs.getString("status"), rs.getTimestamp("created_at").toInstant(),
+                        rs.getLong("answered"), decimal(rs, "avg_score")),
                 limit);
     }
 
@@ -71,10 +82,22 @@ public class QuizDao {
                         + "COALESCE(SUM(CASE WHEN grade IS NOT NULL THEN jsonb_array_length(grade->'missing') ELSE 0 END), 0) AS missed "
                         + "FROM quiz_answer GROUP BY group_tag, category ORDER BY missed DESC NULLS LAST, answered DESC",
                 (rs, i) -> new WeakRow(rs.getString("group_tag"), rs.getString("category"),
-                        rs.getLong("answered"),
-                        // ROUND(AVG(...)) 返回 numeric(即 BigDecimal),getObject 直接 cast Double 会 500
-                        rs.getObject("avg_score") == null ? null : rs.getBigDecimal("avg_score").doubleValue(),
-                        rs.getLong("missed")));
+                        rs.getLong("answered"), decimal(rs, "avg_score"), rs.getLong("missed")));
+    }
+
+    public Overview overview() {
+        return jdbc.queryForObject(
+                "SELECT count(DISTINCT session_id) AS sessions, count(*) AS answered, "
+                        + "ROUND(AVG(score)::numeric, 1) AS avg_score, "
+                        + "COALESCE(SUM(CASE WHEN grade IS NOT NULL THEN jsonb_array_length(grade->'missing') ELSE 0 END), 0) AS missed "
+                        + "FROM quiz_answer",
+                (rs, i) -> new Overview(rs.getLong("sessions"), rs.getLong("answered"),
+                        decimal(rs, "avg_score"), rs.getLong("missed")));
+    }
+
+    /** ROUND(AVG(...)) 返回 numeric(即 BigDecimal),getObject 直接 cast Double 会 500 */
+    private static Double decimal(ResultSet rs, String col) throws java.sql.SQLException {
+        return rs.getObject(col) == null ? null : rs.getBigDecimal(col).doubleValue();
     }
 
     private static AnswerRow row(ResultSet rs) throws java.sql.SQLException {
