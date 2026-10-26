@@ -1,0 +1,46 @@
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # 用 Docker 内置 DNS 按请求解析后端,而不是 nginx 启动时解析一次就缓存:
+    # 只重建 server 容器(拉了新镜像)时它的 IP 会变,写死的 proxy_pass 会一直 502 到 web 也重启
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $backend "http://${BACKEND_ADDR}";
+
+    # 管理接口(重灌索引 / 构建评测集)没有鉴权,且会烧 LLM 额度,不对公网开放;
+    # 需要时在宿主机上直接打后端:curl -X POST http://127.0.0.1:8080/api/admin/reindex
+    location /api/admin/ {
+        return 403;
+    }
+
+    location /api/ {
+        proxy_pass $backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # 问答是 SSE 流式:不关缓冲的话 nginx 攒满一块才往下吐,前端看不到逐字输出
+        proxy_buffering off;
+        proxy_cache off;
+        # 批改是非流式 LLM 调用(后端超时 120s),默认 60s 会先断
+        proxy_read_timeout 300s;
+    }
+
+    # Vite 产物文件名带内容哈希,可以长缓存
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # history 路由(/chat、/kb ...)刷新时回落到 index.html;index.html 本身不缓存,发版后立刻生效
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri $uri/ /index.html;
+    }
+}

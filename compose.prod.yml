@@ -1,0 +1,52 @@
+name: baguwen-rag-prod
+
+# 服务器部署用:拉 GitHub Actions 推到 ghcr 的镜像。本地开发仍用 compose.yml(只起数据库)。
+# 同目录要有:.env(从 .env.example 复制,填 key 和 BAGUWEN_JWT_SECRET)、corpus/(跑爬虫生成)
+#   docker compose -f compose.prod.yml pull && docker compose -f compose.prod.yml up -d
+services:
+  pg:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: baguwen_rag
+      POSTGRES_USER: ${BAGUWEN_DB_USER:-baguwen}
+      # 与后端读的是同一个变量,改一处两边一致
+      POSTGRES_PASSWORD: ${BAGUWEN_DB_PASSWORD:-baguwen_pg_2026}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d baguwen_rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  server:
+    image: ghcr.io/abkkkbb/baguwen-rag-server:${BAGUWEN_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 覆盖 .env 里给本机开发写的 localhost:15432
+      BAGUWEN_DB_URL: jdbc:postgresql://pg:5432/baguwen_rag
+      BAGUWEN_CORPUS_DIR: /app/corpus
+      TZ: Asia/Shanghai
+    volumes:
+      - ./corpus:/app/corpus:ro
+      - logs:/app/logs
+    # 只绑本机回环:管理接口(reindex)和 Swagger 从宿主机访问,公网只走 web
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      pg:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/abkkkbb/baguwen-rag-web:${BAGUWEN_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${BAGUWEN_WEB_PORT:-80}:80"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
+  logs:

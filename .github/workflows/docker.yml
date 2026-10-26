@@ -1,0 +1,63 @@
+name: docker
+
+# push 到 main → 构建 server / web 两个镜像推到 ghcr.io;打 v* 标签额外出版本号 tag。
+# 只改 README、爬虫等不影响镜像的文件不触发(私有仓库的 Actions 分钟数有限)
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+
+# 同一分支连推几次,只保留最后一次构建
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 镜像名:ghcr.io/<owner>/baguwen-rag-server、ghcr.io/<owner>/baguwen-rag-web
+        app: [server, web]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.app }}
+          # latest 跟 main 走;sha-xxxxxxx 每次都有,回滚用;v1.2.3 标签出 1.2.3 和 1.2
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.app }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 两个镜像各用一份缓存,互不覆盖;依赖层不变时 maven / pnpm 不会重新下载
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}

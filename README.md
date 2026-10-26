@@ -68,6 +68,23 @@ Swagger:http://localhost:8080/swagger-ui.html  ·  接口清单:`server/api.http
 - 重排会静默降级:日志里搜 `重排失败,降级回召回原序`,有就是没在跑
 - Git Bash 里 curl 传中文 body 会变 GBK:用 `--data-binary @file.json`(UTF-8 文件)
 
+## Docker 部署
+
+push 到 main(改动涉及 `server/`、`web/`)后,GitHub Actions(`.github/workflows/docker.yml`)自动构建两个镜像推到 ghcr:
+
+- `ghcr.io/abkkkbb/baguwen-rag-server`:Spring Boot,镜像构建时跑单测,挂了不出镜像
+- `ghcr.io/abkkkbb/baguwen-rag-web`:nginx 托管前端,`/api` 反代到 server(已关缓冲,SSE 正常流式);`/api/admin/` 对外 403
+
+tag:`latest`(main 最新)、`sha-<7位>`(每次提交,回滚用)、打 `v1.2.3` 标签额外出 `1.2.3` / `1.2`。
+
+服务器上(同目录放 `compose.prod.yml`、`.env`、`corpus/`):
+
+```bash
+docker login ghcr.io -u abkkkbb          # 仓库私有,密码填 classic PAT(勾 read:packages)
+docker compose -f compose.prod.yml pull && docker compose -f compose.prod.yml up -d
+curl -X POST http://127.0.0.1:8080/api/admin/reindex    # 首次入库;server 端口只绑本机回环
+```
+
 ## 现状(2026-09-12,feat/production-ready 分支):全链路可用 + 检索管线升级
 
 - **索引**:corpus → Java 分块(叶子级标题=题,兼容 h2/h3)→ **长答案切子段(parent-child,574 题 → 1155 子段)**
