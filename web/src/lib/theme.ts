@@ -1,24 +1,36 @@
-// 深浅主题:html.dark 控制 Element Plus 暗色变量
+// 深浅主题。没手动选过就跟随系统(含系统中途切换);手动切过一次就记住,不再跟随。
+// 首帧的主题由 index.html 的内联脚本设置,这里负责之后的切换。
+import { ref } from 'vue'
+
+type Theme = 'light' | 'dark'
+
 const KEY = 'miancoach-theme'
+const media = window.matchMedia('(prefers-color-scheme: dark)')
+
+function saved(): Theme | null {
+  const v = localStorage.getItem(KEY)
+  return v === 'light' || v === 'dark' ? v : null
+}
+
+export const theme = ref<Theme>(saved() ?? (media.matches ? 'dark' : 'light'))
+
+function apply(t: Theme): void {
+  document.documentElement.dataset.theme = t
+  // 手机浏览器地址栏的颜色跟着页面底色走
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#161614' : '#f7f6f3')
+}
 
 export function initTheme(): void {
-  const saved = localStorage.getItem(KEY)
-  const dark = saved ? saved === 'dark' : true // 默认深色
-  apply(dark)
+  apply(theme.value)
+  media.addEventListener('change', (e) => {
+    if (saved()) return
+    theme.value = e.matches ? 'dark' : 'light'
+    apply(theme.value)
+  })
 }
 
-export function apply(dark: boolean): void {
-  document.documentElement.classList.toggle('dark', dark)
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
-}
-
-export function isDark(): boolean {
-  return document.documentElement.classList.contains('dark')
-}
-
-export function toggleTheme(): boolean {
-  const next = !isDark()
-  apply(next)
-  localStorage.setItem(KEY, next ? 'dark' : 'light')
-  return next
+export function toggleTheme(): void {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark'
+  localStorage.setItem(KEY, theme.value)
+  apply(theme.value)
 }

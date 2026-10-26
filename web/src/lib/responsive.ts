@@ -13,8 +13,3 @@ export function useMediaQuery(query: string): Ref<boolean> {
   onBeforeUnmount(() => mql.removeEventListener('change', onChange))
   return matches
 }
-
-/** 手机布局断点,与 AppShell/各页面的 @media (max-width: 720px) 保持一致 */
-export function useIsMobile(): Ref<boolean> {
-  return useMediaQuery('(max-width: 720px)')
-}

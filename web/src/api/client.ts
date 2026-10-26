@@ -1,6 +1,6 @@
 import type {
   AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, GradeOut, GroupCounts, GroupNode,
-  LoginOut, MetaInfo, QuizQuestion, ReindexResult, SessionRow, UserView, WeakRow,
+  LoginOut, MetaInfo, QuizOverview, QuizQuestion, ReindexResult, SessionRow, UserView, WeakRow,
 } from './types'
 import { clearSession, token } from '../lib/session'
 
@@ -47,7 +47,7 @@ export const chatApi = {
   /** 建会话,标题取首条问题前 30 字。返回的 id 随后要随 askStream 传回,那一轮问答才会落历史。 */
   createSession: (firstQuestion: string) =>
     post<{ sessionId: string }>('/api/chat/session', { firstQuestion }),
-  /** 会话列表,按最后活跃倒序。「今天/昨天/更早」的分组在前端算(见 HistoryRail)。 */
+  /** 会话列表,按最后活跃倒序。「今天/昨天/近 7 天/更早」的分组在前端算(见 lib/format 的 dayBucket)。 */
   sessions: (limit = 50) => json<ChatSessionRow[]>(`/api/chat/sessions?limit=${limit}`),
   /** 回放:该会话的全部消息,按写入顺序。 */
   messages: (id: string) => json<ChatMessageRow[]>(`/api/chat/session/${id}`),
@@ -73,12 +73,15 @@ export const corpusApi = {
 }
 
 export const quizApi = {
-  start: (groupTag?: string) => post<QuizQuestion>('/api/quiz/start', { groupTag: groupTag ?? null }),
-  pick: (sessionId: string, groupTag?: string) =>
-    post<QuizQuestion>(`/api/quiz/session/${sessionId}/pick`, { groupTag: groupTag ?? null }),
+  start: (groupTag?: string | null) => post<QuizQuestion>('/api/quiz/start', { groupTag: groupTag ?? null }),
+  /** exclude:本场出过但没作答(被跳过)的题,后端再抽时跳过;已作答的后端自己会排除 */
+  pick: (sessionId: string, groupTag?: string | null, exclude: number[] = []) =>
+    post<QuizQuestion>(`/api/quiz/session/${sessionId}/pick`, { groupTag: groupTag ?? null, exclude }),
   grade: (sessionId: string, chunkId: number, userAnswer: string) =>
     post<GradeOut>(`/api/quiz/session/${sessionId}/grade`, { chunkId, userAnswer }),
-  sessions: () => json<SessionRow[]>('/api/quiz/sessions?limit=100'),
+  /** 只要答过题的场次:开了就走的空场次在复盘里没有意义 */
+  sessions: () => json<SessionRow[]>('/api/quiz/sessions?limit=100&answeredOnly=true'),
+  overview: () => json<QuizOverview>('/api/quiz/overview'),
   report: (id: string) =>
     json<{ sessionId: string; answered: number; avgScore: number; report: string }>(`/api/quiz/session/${id}/report`),
   answers: (id: string) => json<AnswerRow[]>(`/api/quiz/session/${id}`),

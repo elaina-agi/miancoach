@@ -1,57 +1,83 @@
-/* ============ MianCoach 设计令牌(dark-first,代码绿 x 深夜自习) ============ */
+/* ============ MianCoach 设计令牌 ============
+ * 方向:安静的书桌。暖白纸色打底、墨色文字、一个玉绿强调色。
+ * 层次靠背景明度和细分隔线,几乎不用阴影;长文阅读优先(正文 15px / 行高 1.8)。
+ * 主题由 html[data-theme] 控制,index.html 里的内联脚本在首帧前就设好,避免闪白/闪黑。 */
 :root {
-  /* 语义色 */
-  --bg: #0b1220;
-  --bg-panel: #0f172a;
-  --bg-soft: #141e33;
-  --bg-hover: #1a2540;
-  --border: rgba(148, 163, 184, 0.14);
-  --border-strong: rgba(148, 163, 184, 0.26);
-  --text: #e7edf5;
-  --text-dim: #94a3b8;
-  --text-faint: #64748b;
+  --bg: #f7f6f3;            /* 页面底色:暖白纸 */
+  --surface: #ffffff;       /* 卡片、输入框 */
+  --fill: #f0eee9;          /* 悬停、次级填充 */
+  --fill-strong: #e7e4dd;   /* 选中、按下 */
+  --line: #e6e2da;          /* 细分隔线 */
+  --line-strong: #d3cec4;   /* 输入框边框 */
+  --ink: #1f1e1c;           /* 正文 */
+  --ink-2: #5a564f;         /* 次要文字 */
+  --ink-3: #7b766c;         /* 辅助信息(时间、提示),不用于大段正文 */
 
-  /* 主色:run 绿(答对/执行);信息青;警告琥珀 */
-  --accent: #22c55e;
-  --accent-strong: #16a34a;
-  --accent-soft: rgba(34, 197, 94, 0.12);
-  --info: #38bdf8;
-  --info-soft: rgba(56, 189, 248, 0.12);
-  --warn: #fbbf24;
-  --warn-soft: rgba(251, 191, 36, 0.12);
-  --danger: #f87171;
+  --accent: #0f7a5c;        /* 玉绿:主按钮、选中、答对 */
+  --accent-hover: #0b6a4f;
+  --accent-ink: #ffffff;    /* 强调色上的文字 */
+  --accent-soft: #e4f1ec;
+  --accent-line: #b8dacb;
 
-  /* 字体 */
-  --font-display: 'Space Grotesk', 'DM Sans', 'Segoe UI', system-ui, 'Microsoft YaHei', 'PingFang SC', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+  /* 分数三档:答得好 / 一般 / 薄弱。颜色之外都配文字标签,不只靠颜色区分;
+     三色用 dataviz 校验脚本跑过(含红绿色盲模拟下的区分度),浅色、深色两套都通过 */
+  --good: #0f7a5c;
+  --good-soft: #e4f1ec;
+  --mid: #a87c00;
+  --mid-soft: #f7efd9;
+  --bad: #a1232b;
+  --bad-soft: #f6e4e4;
 
-  /* 圆角 / 阴影 / 动效 */
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --t-fast: 150ms;
-  --t-mid: 240ms;
+  --code-bg: #f3f1ec;
+  --overlay: rgba(28, 26, 22, 0.32);
+  --shadow-pop: 0 10px 30px rgba(28, 26, 22, 0.12), 0 1px 3px rgba(28, 26, 22, 0.08);
+  --shadow-soft: 0 1px 2px rgba(28, 26, 22, 0.04), 0 4px 18px rgba(28, 26, 22, 0.05);
+
+  /* 中文为主:直接用系统字体,Latin 部分在 Mac 上是 SF、Windows 上是 Segoe UI */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --t: 160ms;
+
+  --topbar-h: 56px;
+  --side-w: 320px;          /* 问答历史栏、知识库目录栏同宽,顶栏导航按它对齐 */
+  --tabbar-h: 58px;
+  color-scheme: light;
 }
 
-/* 浅色(可选):切换掉 html 上的 .dark 即用这套 */
-html:not(.dark) {
-  --bg: #f5f7fb;
-  --bg-panel: #ffffff;
-  --bg-soft: #eef2f8;
-  --bg-hover: #e6ecf5;
-  --border: rgba(15, 23, 42, 0.1);
-  --border-strong: rgba(15, 23, 42, 0.2);
-  --text: #0f172a;
-  --text-dim: #475569;
-  --text-faint: #94a3b8;
-  --accent: #16a34a;
-  --accent-strong: #15803d;
-  --accent-soft: rgba(22, 163, 74, 0.1);
-  --info: #0284c7;
-  --info-soft: rgba(2, 132, 199, 0.1);
-  --warn: #d97706;
-  --warn-soft: rgba(217, 119, 6, 0.1);
-  --danger: #dc2626;
-  --shadow-panel: 0 1px 2px rgba(15, 23, 42, 0.05), 0 6px 18px rgba(15, 23, 42, 0.06);
+[data-theme='dark'] {
+  --bg: #161614;
+  --surface: #1e1e1b;
+  --fill: #262623;
+  --fill-strong: #30302c;
+  --line: #2c2c28;
+  --line-strong: #3d3d38;
+  --ink: #ecebe6;
+  --ink-2: #aaa69c;
+  --ink-3: #807c73;
+
+  --accent: #3fbf8f;
+  --accent-hover: #5ccfa2;
+  --accent-ink: #0b1f17;
+  --accent-soft: rgba(63, 191, 143, 0.13);
+  --accent-line: rgba(63, 191, 143, 0.38);
+
+  --good: #3fbf8f;
+  --good-soft: rgba(63, 191, 143, 0.13);
+  --mid: #d9b23f;
+  --mid-soft: rgba(217, 178, 63, 0.14);
+  --bad: #ef6f73;
+  --bad-soft: rgba(239, 111, 115, 0.14);
+
+  --code-bg: #232320;
+  --overlay: rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 12px 36px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-soft: none;
+  color-scheme: dark;
 }

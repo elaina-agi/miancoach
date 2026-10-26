@@ -1,13 +1,21 @@
 <template>
-  <div class="md-body" v-html="html" />
+  <div class="md" :class="{ citable }" @click="onClick" v-html="html" />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
 import cjkFriendly from 'markdown-it-cjk-friendly'
+import { toast } from '../lib/toast'
 
-const props = defineProps<{ content: string }>()
+const props = defineProps<{
+  content: string
+  /** 回答里的 [n] 可点:点了打开第 n 篇来源。题库原文里的 [n] 只是普通上标 */
+  citable?: boolean
+  /** 流式生成中:在最后一个字后面画闪烁光标 */
+  streaming?: boolean
+}>()
+const emit = defineEmits<{ cite: [n: number] }>()
 
 const md = new MarkdownIt({
   html: false,       // 语料是 md,不允许原始 html
@@ -17,146 +25,116 @@ const md = new MarkdownIt({
 })
 // CJK 加粗修复:**结论：**中文 这种"闭合**后紧贴文字"的写法,CommonMark 原生不解析
 md.use(cjkFriendly)
+
 // 外链新窗口打开
-const defaultRender = md.renderer.rules.link_open
+const defaultLink = md.renderer.rules.link_open
   || ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   tokens[idx].attrSet('target', '_blank')
   tokens[idx].attrSet('rel', 'noopener noreferrer')
-  return defaultRender(tokens, idx, options, env, self)
+  return defaultLink(tokens, idx, options, env, self)
 }
 
-// 引用标记 [1] → 上标徽章;代码块/行内代码里的 [n] 是字面内容,不转换
-const CITE_RE = /\[(\d{1,2})\]/g
+// 代码块外面包一层,带语言名和复制按钮;复制靠根节点上的事件委托,v-html 里没法绑事件
+const defaultFence = md.renderer.rules.fence!
+md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+  const lang = md.utils.escapeHtml(tokens[idx].info.trim().split(/\s+/)[0] || '')
+  return `<div class="code"><div class="code-bar"><span>${lang}</span><button type="button" class="code-copy">复制</button></div>`
+    + defaultFence(tokens, idx, options, env, self) + '</div>'
+}
+
+// 引用标记 → 上标徽章。模型既会写 [1] 也会写合并的 [1, 3, 4] / [1、3],后者拆成一个个徽章;
+// 代码块/行内代码里的 [n] 是字面内容,不转换
+const CITE_RE = /\[(\d{1,2}(?:\s*[,，、]\s*\d{1,2})*)\]/g
 const CODE_SEG_RE = /(<pre[\s\S]*?<\/pre>|<code[^>]*>[\s\S]*?<\/code>)/g
 function decorateCites(html: string): string {
   return html
     .split(CODE_SEG_RE)
-    .map((seg) =>
-      seg.startsWith('<pre') || seg.startsWith('<code')
-        ? seg
-        : seg.replace(CITE_RE, '<sup class="cite">$1</sup>'),
-    )
+    .map((seg) => (seg.startsWith('<pre') || seg.startsWith('<code')
+      ? seg
+      // 前面加一个 WORD JOINER(U+2060):中文字后面本来随处可断行,不加的话角标会和前一个字分开、单独掉到下一行
+      : seg.replace(CITE_RE, (_, list: string) => '&#8288;' + list.split(/\s*[,，、]\s*/)
+        .map((n) => `<sup class="cite" data-cite="${n}">${n}</sup>`).join('&#8288;'))))
     .join('')
 }
 
-const html = computed(() => decorateCites(md.render(props.content ?? '')))
+// 光标要跟在最后一个字后面(同一行),而不是另起一块:先在原文末尾放一个私用区占位符,
+// 渲染成 html 后再换成光标元素。私用区字符不会出现在正常文本里
+const CARET = ''
+const html = computed(() => {
+  const out = decorateCites(md.render((props.content ?? '') + (props.streaming ? CARET : '')))
+  return props.streaming ? out.replace(CARET, '<span class="caret"></span>') : out
+})
+
+async function onClick(e: MouseEvent) {
+  const t = e.target as HTMLElement
+  const cite = t.closest<HTMLElement>('sup.cite')
+  if (cite && props.citable) {
+    emit('cite', Number(cite.dataset.cite))
+    return
+  }
+  const copyBtn = t.closest<HTMLButtonElement>('.code-copy')
+  if (copyBtn) {
+    const code = copyBtn.closest('.code')?.querySelector('pre')?.textContent ?? ''
+    try {
+      await navigator.clipboard.writeText(code)
+      copyBtn.textContent = '已复制'
+      setTimeout(() => { copyBtn.textContent = '复制' }, 1500)
+    } catch {
+      toast.error('复制失败，浏览器没有给剪贴板权限')
+    }
+  }
+}
 </script>
 
 <style scoped>
-.md-body {
-  font-size: 14px;
-  line-height: 1.85;
-  color: var(--text);
-  overflow-wrap: break-word;
-}
-.md-body :deep(> :first-child) { margin-top: 0; }
-.md-body :deep(> :last-child) { margin-bottom: 0; }
+.md { font-size: 15px; line-height: 1.8; color: var(--ink); overflow-wrap: break-word; }
+.md :deep(> :first-child) { margin-top: 0; }
+.md :deep(> :last-child) { margin-bottom: 0; }
 
-/* 标题层级:回答里多用 h2/h3 做小节,h4 兜底 */
-.md-body :deep(h1), .md-body :deep(h2), .md-body :deep(h3), .md-body :deep(h4) {
-  font-weight: 650;
-  line-height: 1.4;
-  margin: 1.25em 0 0.55em;
-  color: var(--text);
-  scroll-margin-top: 12px;
-}
-.md-body :deep(h1) { font-size: 1.4em; }
-.md-body :deep(h2) {
-  font-size: 1.18em;
-  padding-left: 9px;
-  border-left: 3px solid var(--accent);
-  margin-top: 1.4em;
-}
-.md-body :deep(h3) {
-  font-size: 1.06em;
-  color: var(--text);
-  padding-bottom: 0.2em;
-  border-bottom: 1px dashed var(--border);
-}
-.md-body :deep(h4) { font-size: 1em; color: var(--text-dim); }
+.md :deep(h1), .md :deep(h2), .md :deep(h3), .md :deep(h4) { font-weight: 650; line-height: 1.45; margin: 1.5em 0 0.6em; color: var(--ink); scroll-margin-top: 16px; }
+.md :deep(h1) { font-size: 1.35em; }
+.md :deep(h2) { font-size: 1.2em; }
+.md :deep(h3) { font-size: 1.07em; }
+.md :deep(h4) { font-size: 1em; color: var(--ink-2); }
 
-.md-body :deep(p) { margin: 0.6em 0; }
+.md :deep(p) { margin: 0.75em 0; text-wrap: pretty; }
+.md :deep(ul), .md :deep(ol) { margin: 0.7em 0; padding-left: 1.4em; }
+.md :deep(li) { margin: 0.3em 0; padding-left: 0.15em; }
+.md :deep(li::marker) { color: var(--ink-3); }
+.md :deep(ol > li::marker) { font-variant-numeric: tabular-nums; }
+.md :deep(li > ul), .md :deep(li > ol) { margin: 0.25em 0; }
+.md :deep(li > p) { margin: 0.3em 0; }
 
-/* 列表:标记用主题色,条目间留呼吸感 */
-.md-body :deep(ul), .md-body :deep(ol) { margin: 0.55em 0; padding-left: 1.5em; }
-.md-body :deep(li) { margin: 0.35em 0; }
-.md-body :deep(li::marker) { color: var(--accent); font-weight: 600; }
-.md-body :deep(li > ul), .md-body :deep(li > ol) { margin: 0.3em 0; }
+.md :deep(a) { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-line); text-underline-offset: 3px; }
+.md :deep(a:hover) { text-decoration-color: var(--accent); }
+.md :deep(strong) { font-weight: 650; }
 
-.md-body :deep(a) { color: var(--info); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--info) 45%, transparent); }
-.md-body :deep(a:hover) { color: var(--accent); border-bottom-color: var(--accent); }
+.md :deep(code) { font-family: var(--font-mono); font-size: 0.86em; padding: 0.12em 0.4em; border-radius: 5px; background: var(--code-bg); border: 1px solid var(--line); }
+.md :deep(.code) { margin: 1em 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--code-bg); overflow: hidden; }
+.md :deep(.code-bar) { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); }
+.md :deep(.code-copy) { height: 24px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 12px; cursor: pointer; }
+.md :deep(.code-copy:hover) { background: var(--fill-strong); color: var(--ink); }
+.md :deep(pre) { margin: 0; padding: 12px 14px; overflow-x: auto; line-height: 1.65; }
+.md :deep(pre code) { padding: 0; border: 0; background: transparent; font-size: 13px; }
 
-.md-body :deep(code) {
-  font-family: var(--font-mono);
-  font-size: 0.87em;
-  background: var(--bg-soft);
-  padding: 0.14em 0.42em;
-  border-radius: 6px;
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-}
-.md-body :deep(pre) {
-  background: #0a0f1c;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  overflow-x: auto;
-  margin: 0.8em 0;
-  line-height: 1.6;
-}
-.md-body :deep(pre code) {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  color: #c9d7e8;
-  font-size: 12.5px;
-}
+.md :deep(blockquote) { margin: 1em 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line-strong); color: var(--ink-2); }
+.md :deep(blockquote p) { margin: 0.4em 0; }
 
-.md-body :deep(blockquote) {
-  margin: 0.8em 0;
-  padding: 0.35em 0.9em;
-  border-left: 3px solid var(--accent);
-  background: var(--accent-soft);
-  border-radius: 0 8px 8px 0;
-  color: var(--text-dim);
-}
-.md-body :deep(blockquote p) { margin: 0.3em 0; }
+/* 表格横向放不下时整块滚动,不挤压列宽 */
+.md :deep(table) { display: block; width: max-content; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 1em 0; font-size: 13.5px; line-height: 1.6; }
+.md :deep(th), .md :deep(td) { border: 1px solid var(--line); padding: 7px 12px; text-align: left; vertical-align: top; }
+.md :deep(th) { background: var(--fill); font-weight: 600; white-space: nowrap; }
 
-.md-body :deep(table) {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 0.8em 0;
-  font-size: 13px;
-  display: block;
-  overflow-x: auto;
-}
-.md-body :deep(th), .md-body :deep(td) {
-  border: 1px solid var(--border);
-  padding: 6px 10px;
-  text-align: left;
-}
-.md-body :deep(th) { background: var(--bg-soft); font-weight: 600; white-space: nowrap; }
-.md-body :deep(tr:nth-child(2n)) { background: color-mix(in srgb, var(--bg-soft) 45%, transparent); }
+.md :deep(img) { max-width: 100%; border-radius: var(--r); }
+.md :deep(hr) { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
 
-.md-body :deep(img) { max-width: 100%; border-radius: var(--radius); margin: 0.4em 0; }
-.md-body :deep(hr) { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
-.md-body :deep(strong) { font-weight: 650; color: var(--text); }
+.md :deep(.caret) { display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -0.17em; border-radius: 2px; background: var(--accent); animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
 
-/* 引用徽章:[n] 变成小号上标胶囊,和正文视觉分离 */
-.md-body :deep(sup.cite) {
-  font-family: var(--font-display);
-  font-size: 0.68em;
-  font-weight: 700;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: 999px;
-  padding: 0 0.45em;
-  margin: 0 2px;
-  line-height: 1.5;
-  vertical-align: super;
-  user-select: none;
-  cursor: default;
-}
+/* 引用徽章:[n] 变成小号上标,可点时像一个按钮 */
+/* inline 而不是 inline-block:inline-block 会让后面的"。"被单独折到下一行(行首禁则对它不生效) */
+.md :deep(sup.cite) { display: inline; margin: 0 1px; padding: 0.05em 0.42em; border-radius: 5px; background: var(--fill); color: var(--ink-2); font-size: 0.68em; font-weight: 650; line-height: 1.55; text-align: center; vertical-align: 0.5em; font-variant-numeric: tabular-nums; user-select: none; }
+.md.citable :deep(sup.cite) { cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.md.citable :deep(sup.cite:hover) { background: var(--accent-soft); color: var(--accent); }
 </style>

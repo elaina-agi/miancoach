@@ -70,9 +70,20 @@ export interface GradeOut {
 
 export interface SessionRow {
   id: string
-  groupTag: string | null
+  /** 全题库时后端省略这个 key(non_null) */
+  groupTag?: string | null
   status: string
   createdAt: string
+  answered: number
+  /** 一题都没评分(mock 批改)时省略 */
+  avgScore?: number | null
+}
+
+export interface QuizOverview {
+  sessions: number
+  answered: number
+  avgScore?: number | null
+  missed: number
 }
 
 export interface AnswerRow {
@@ -88,10 +99,10 @@ export interface AnswerRow {
 }
 
 export interface WeakRow {
-  groupTag: string | null
-  category: string | null
+  groupTag?: string | null
+  category?: string | null
   answered: number
-  avgScore: number | null
+  avgScore?: number | null
   missed: number
 }
 
@@ -123,6 +134,7 @@ export interface MetaInfo {
   embedModel: string
   embedDims: number
   totalChunks: number
+  totalSegs: number
   docs: number
   index: IndexStatus
 }
