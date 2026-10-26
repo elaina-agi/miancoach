@@ -52,6 +52,10 @@ app:
     model: ${BAGUWEN_CHAT_MODEL:qwen-plus}
     request-timeout-secs: 120
     connect-timeout-secs: 15
+    # 代理(可选):端点需代理才能访问时配置(如 Google Gemini 官方 API 经本机代理)。
+    # 只作用于 chat;embed/rerank 走国内端点保持直连。host 留空或端口 0 = 直连
+    proxy-host: ${BAGUWEN_CHAT_PROXY_HOST:}
+    proxy-port: ${BAGUWEN_CHAT_PROXY_PORT:0}
 
   # ── 向量端:索引与查询。换模型/维度后**必须重新索引**(见 GET /api/meta 的 index 字段)。
   embed:

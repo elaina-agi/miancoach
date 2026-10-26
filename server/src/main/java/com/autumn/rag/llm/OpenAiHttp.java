@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -28,10 +30,21 @@ public class OpenAiHttp {
     private final HttpClient http;
 
     public OpenAiHttp(ObjectMapper om, int connectTimeoutSecs) {
+        this(om, connectTimeoutSecs, null, 0);
+    }
+
+    /**
+     * proxyHost 配置时,该实例的所有请求经代理出去 —— 服务于 chat 走本机代理访问
+     * Google 等直连不通的端点;embed/rerank 实例仍走两参构造保持直连。留空/端口 0 = 直连。
+     */
+    public OpenAiHttp(ObjectMapper om, int connectTimeoutSecs, String proxyHost, int proxyPort) {
         this.om = om;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(Math.max(1, connectTimeoutSecs)))
-                .build();
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(Math.max(1, connectTimeoutSecs)));
+        if (proxyHost != null && !proxyHost.isBlank() && proxyPort > 0) {
+            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyHost, proxyPort)));
+        }
+        this.http = builder.build();
     }
 
     /** 一次调用的目标(base-url + key + 超时)。 */

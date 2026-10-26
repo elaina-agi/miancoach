@@ -26,7 +26,11 @@ public record AppProperties(
             String apiKey,
             String model,
             int requestTimeoutSecs,
-            int connectTimeoutSecs) {}
+            int connectTimeoutSecs,
+            // 代理(可选):base-url 指向需代理的端点时配置(如 Google Gemini 官方 API 经本机代理)。
+            // 只作用于 chat —— embed/rerank 走国内端点,保持直连。host 留空或端口 0 = 直连。
+            String proxyHost,
+            int proxyPort) {}
 
     /** 向量端:索引与查询。dims 必须与 embedding 列维度一致。 */
     public record Embed(
