@@ -23,7 +23,9 @@ class MdParserTest {
         assertEquals(3, page.sections().size());
         assertEquals("类目一", page.sections().get(0).category());
         assertEquals("第一题", page.sections().get(0).question());
-        assertTrue(page.sections().get(0).content().contains("第一题的答案"));
+        // 精确比对:正文止于下一条标题之前,不能把下一题 / 下一类目的标题带进来
+        assertEquals("第一题的答案内容。", page.sections().get(0).content());
+        assertEquals("第二题的答案内容。", page.sections().get(1).content());
         assertEquals("类目二", page.sections().get(2).category());
         // 容器类目本身不入库
         assertFalse(page.sections().stream().anyMatch(s -> s.question().equals("类目一")));
@@ -64,5 +66,9 @@ class MdParserTest {
         List<MdParser.Section> sd = MdParser.parse(CORPUS.resolve("interview/architecture/systemdesign.md").toAbsolutePath(), "architecture").sections();
         assertEquals(48, redis.size(), "redis.md 切题数");
         assertEquals(14, sd.size(), "systemdesign.md 切题数");
+        for (MdParser.Section s : redis) {
+            String last = s.content().lines().reduce((a, b) -> b).orElse("");
+            assertFalse(last.matches("#{1,6}\\s.*"), "「" + s.question() + "」的答案末尾带了标题行: " + last);
+        }
     }
 }

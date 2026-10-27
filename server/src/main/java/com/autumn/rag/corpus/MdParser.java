@@ -33,7 +33,8 @@ public final class MdParser {
 
     public record ParsedPage(PageMeta meta, List<Section> sections) {}
 
-    private record OutlineEntry(int level, String text, int start) {}
+    /** line:标题所在行号(0 起);正文从 line + 1 开始 */
+    private record OutlineEntry(int level, String text, int line) {}
 
     private MdParser() {}
 
@@ -45,6 +46,8 @@ public final class MdParser {
         } catch (IOException e) {
             throw new IllegalStateException("读语料失败: " + file, e);
         }
+        // CRLF 统一成 LF:否则行尾的 \r 让标题正则整行匹配失败,整页切出 0 题(Windows 上编辑过的 md 会这样)
+        raw = raw.replace("\r\n", "\n");
         String[] fmBody = splitFrontmatter(raw);
         Map<String, String> fm = parseFrontmatter(fmBody[0]);
         String slug = file.getFileName().toString().replaceAll("\\.md$", "");
@@ -81,7 +84,7 @@ public final class MdParser {
             }
             var m = HEADING.matcher(ln);
             if (m.matches()) {
-                heads.add(new OutlineEntry(m.group(1).length(), cleanHeading(m.group(2)), idx + 1));
+                heads.add(new OutlineEntry(m.group(1).length(), cleanHeading(m.group(2)), idx));
             }
         }
         if (heads.isEmpty()) {
@@ -100,8 +103,9 @@ public final class MdParser {
             if (!leaf || h.level() == 1) {
                 continue; // 根标题 / 容器类目不入库
             }
-            int end = i + 1 < heads.size() ? heads.get(i + 1).start() : lines.length;
-            String content = stripFooter(join(lines, h.start(), end));
+            // 正文到下一条标题行之前为止(不含那一行,否则下一题的标题会挂在本题答案末尾)
+            int end = i + 1 < heads.size() ? heads.get(i + 1).line() : lines.length;
+            String content = stripFooter(join(lines, h.line() + 1, end));
             String q = h.text();
             String key = normalizeKey(q);
             if (content.isBlank()) {
