@@ -98,7 +98,8 @@ curl -X POST http://127.0.0.1:8080/api/admin/reindex    # 首次入库;server �
   `GET /api/admin/eval?mode=golden` 报 recall@k / MRR / 延迟 / 拒答定标(数字见下方「评测结果」)
 - **多轮追问**:`/api/chat/ask` 带 history,追问里的"它/那个"先改写成独立问题再检索
 - **问答**:`POST /api/chat/ask`(SSE:refs→delta→done),子段命中片段前置进上下文,答案引用可点开原文
-- **模拟面试**:`/api/quiz/start|pick|grade`,批改=LLM 对照标准原文逐点评分(hits/missing),落库
+- **模拟面试**:`/api/quiz/start|pick|grade`,批改=LLM 对照标准原文逐点评分(hits/missing),登录用户落库
+- **游客模式**:不登录也能问答、模拟面试,只是不留历史;登录后问答历史与面试记录按账号隔离,互相看不到
 - **复盘**:场次记录 + 按板块/类目的薄弱聚合
 - 前端四页(问答/知识库/模拟面试/复盘),不依赖组件库(自写弹框/侧滑面板/提示,图标用 lucide),暖白纸色 + 玉绿强调,深浅主题跟随系统
   - 问答:会话 id 进 URL(刷新不丢),回答里的 [n] 可点开来源原文(宽屏并排、窄屏侧滑),往上翻时不被流式输出拽回底部

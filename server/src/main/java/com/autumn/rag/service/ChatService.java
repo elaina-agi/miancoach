@@ -17,7 +17,7 @@ import java.util.UUID;
  *
  * <p>分两半:
  * <ul>
- *   <li><b>查询侧</b>(会话列表 / 某会话消息 / 删除)——供前端历史侧栏用</li>
+ *   <li><b>查询侧</b>(会话列表 / 某会话消息 / 删除)——供前端历史侧栏用,只能看到、删掉自己的会话</li>
  *   <li><b>写入侧</b>({@link #recordQuestion} / {@link #recordAnswer})——供 {@link AskService}
  *       在问答流程的两个时刻调用。注意依赖方向是单向的:AskService → ChatService,不能反过来</li>
  * </ul>
@@ -52,12 +52,13 @@ public class ChatService {
      * <p><b>分组(今天/昨天/更早)不在这里做</b>——那是展示逻辑,而且按哪个时区分组取决于
      * 用户所在的时区,后端不该替前端决定。这里只给排好序的扁平列表 + updatedAt 时间戳。
      */
-    public List<ChatDao.SessionRow> sessions(int limit) {
-        return dao.sessions(Math.max(1, Math.min(limit, LIST_MAX)));
+    public List<ChatDao.SessionRow> sessions(UUID userId, int limit) {
+        return dao.sessions(userId, Math.max(1, Math.min(limit, LIST_MAX)));
     }
 
     /** 一个会话的全部消息,按写入顺序(前端回放整段对话用)。 */
-    public List<MessageOut> messages(UUID sessionId) {
+    public List<MessageOut> messages(UUID userId, UUID sessionId) {
+        requireOwner(userId, sessionId);
         return dao.messages(sessionId).stream()
                 .map(r -> new MessageOut(r.id(), r.role(), r.content(), r.noAnswer(),
                         r.createdAt(), parseRefs(r.refsJson())))
@@ -65,8 +66,18 @@ public class ChatService {
     }
 
     /** 删会话(消息由外键级联删除)。会话不存在时抛 404,而不是静默成功。 */
-    public void delete(UUID sessionId) {
-        if (dao.deleteSession(sessionId) == 0) {
+    public void delete(UUID userId, UUID sessionId) {
+        if (dao.deleteSession(sessionId, userId) == 0) {
+            throw new NotFoundException("会话不存在: " + sessionId);
+        }
+    }
+
+    /**
+     * 别人的会话和不存在的会话一样回 404,不回 403——403 等于告诉对方"这个 id 存在,只是不归你"。
+     * 问答往会话里写之前也走这里(见 ChatController.ask)。
+     */
+    public void requireOwner(UUID userId, UUID sessionId) {
+        if (!dao.ownsSession(sessionId, userId)) {
             throw new NotFoundException("会话不存在: " + sessionId);
         }
     }
@@ -78,12 +89,12 @@ public class ChatService {
      * 标题取问题前 {@value #TITLE_MAX} 字——零成本,够列表辨认;将来要做重命名,
      * 直接 UPDATE title 即可,表结构不用动。
      */
-    public UUID createSession(String firstQuestion) {
+    public UUID createSession(UUID userId, String firstQuestion) {
         String q = firstQuestion == null ? "" : firstQuestion.strip();
         String title = q.isEmpty()
                 ? "新会话"
                 : (q.length() > TITLE_MAX ? q.substring(0, TITLE_MAX) + "…" : q);
-        return dao.createSession(title);
+        return dao.createSession(userId, title);
     }
 
     /**

@@ -1,10 +1,7 @@
 package com.autumn.rag.web;
 
-import com.autumn.rag.common.AuthException;
 import com.autumn.rag.service.AuthService;
-import com.autumn.rag.service.JwtService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
@@ -15,16 +12,13 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Swagger 里的 Authorize 按钮由 @SecurityScheme 生成。不能直接用 @RequestHeader 让它出一个输入框:
@@ -37,11 +31,9 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService authService;
-    private final JwtService jwtService;
 
-    public AuthController(AuthService authService, JwtService jwtService) {
+    public AuthController(AuthService authService) {
         this.authService = authService;
-        this.jwtService = jwtService;
     }
 
     public record CodeReq(@NotBlank(message = "邮箱不能为空") @Email(message = "邮箱格式不正确") String email) {}
@@ -77,21 +69,7 @@ public class AuthController {
     @Operation(summary = "当前用户", description = "请求头 Authorization: Bearer <token>;Swagger 里先点右上角 Authorize 填 token")
     @SecurityRequirement(name = "bearer")
     @GetMapping("/me")
-    public AuthService.UserView me(
-            @Parameter(hidden = true) @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
-        return authService.me(currentUserId(authorization));
-    }
-
-    /**
-     * 从请求头解析当前用户。临时放在这里:鉴权过滤链那一步会把它挪进拦截器,
-     * 所有需要登录的接口统一处理,Controller 不再自己拆 header。
-     */
-    private UUID currentUserId(String authorization) {
-        String prefix = "Bearer ";
-        if (authorization == null || !authorization.regionMatches(true, 0, prefix, 0, prefix.length())) {
-            throw new AuthException("未登录");
-        }
-        return jwtService.parse(authorization.substring(prefix.length()).trim())
-                .orElseThrow(() -> new AuthException("登录已失效,请重新登录"));
+    public AuthService.UserView me(@CurrentUser LoginUser user) {
+        return authService.me(user.id());
     }
 }

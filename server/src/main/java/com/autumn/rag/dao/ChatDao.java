@@ -34,10 +34,10 @@ public class ChatDao {
     // ------------------------------------------------------------------ 写
 
     /** 建会话,返回数据库生成的 id(与 QuizDao.createSession 同款写法)。 */
-    public UUID createSession(String title) {
+    public UUID createSession(UUID userId, String title) {
         return jdbc.queryForObject(
-                "INSERT INTO chat_session(title) VALUES (?) RETURNING id",
-                UUID.class, title);
+                "INSERT INTO chat_session(user_id, title) VALUES (?,?) RETURNING id",
+                UUID.class, userId, title);
     }
 
     /**
@@ -64,14 +64,22 @@ public class ChatDao {
 
     // ------------------------------------------------------------------ 读
 
-    /** 会话列表,最近活跃的在前。limit 由调用方给(接口默认 50)。 */
-    public List<SessionRow> sessions(int limit) {
+    /** 某个用户的会话列表,最近活跃的在前。limit 由调用方给(接口默认 50)。 */
+    public List<SessionRow> sessions(UUID userId, int limit) {
         return jdbc.query("SELECT id, title, created_at, updated_at FROM chat_session "
-                        + "ORDER BY updated_at DESC LIMIT ?",
+                        + "WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
                 (rs, i) -> new SessionRow(rs.getObject("id", UUID.class), rs.getString("title"),
                         rs.getTimestamp("created_at").toInstant(),
                         rs.getTimestamp("updated_at").toInstant()),
-                limit);
+                userId, limit);
+    }
+
+    /** 会话存在且属于这个用户。读消息、往里写问答之前都要先过这一关。 */
+    public boolean ownsSession(UUID sessionId, UUID userId) {
+        Boolean owns = jdbc.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM chat_session WHERE id = ? AND user_id = ?)",
+                Boolean.class, sessionId, userId);
+        return Boolean.TRUE.equals(owns);
     }
 
     /** 一个会话的全部消息,按写入顺序(回放用)。refs::text 是为了拿到原始 JSON 文本,与 QuizDao 读 grade 同款。 */
@@ -84,8 +92,11 @@ public class ChatDao {
                 sessionId);
     }
 
-    /** 删会话。消息由外键 ON DELETE CASCADE 一并清掉,不会留孤儿行。返回删除行数,0 表示不存在。 */
-    public int deleteSession(UUID sessionId) {
-        return jdbc.update("DELETE FROM chat_session WHERE id = ?", sessionId);
+    /**
+     * 删会话。消息由外键 ON DELETE CASCADE 一并清掉,不会留孤儿行。
+     * 归属条件直接写进 WHERE,不先查再删:返回 0 就是"不存在或不是你的",两种情况对外不区分。
+     */
+    public int deleteSession(UUID sessionId, UUID userId) {
+        return jdbc.update("DELETE FROM chat_session WHERE id = ? AND user_id = ?", sessionId, userId);
     }
 }
