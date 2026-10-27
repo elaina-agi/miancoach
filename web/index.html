@@ -1,12 +1,20 @@
 <!doctype html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0b1220" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2322c55e'/%3E%3Ctext x='50' y='70' font-size='60' text-anchor='middle' fill='%23072210' font-family='monospace' font-weight='bold'%3EM%3C/text%3E%3C/svg%3E" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f7f6f3" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7' fill='%230f7a5c'/%3E%3Cpath d='M7 8h10M7 12h7M7 16h4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E" />
     <title>MianCoach · AI 模拟面试官</title>
+    <!-- 首帧前定主题:等 JS 模块加载完再设的话,深色用户会先看到一闪白屏。逻辑与 src/lib/theme.ts 一致 -->
+    <script>
+      (function () {
+        var saved = localStorage.getItem('miancoach-theme')
+        var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

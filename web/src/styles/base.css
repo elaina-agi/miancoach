@@ -1,112 +1,110 @@
-/* ============ 全局 base + Element Plus 主题桥接 ============ */
-* {
-  box-sizing: border-box;
-}
+/* ============ 全局 base + 通用控件 ============
+ * 按钮/输入框/标签这类到处都用的控件写成全局类(.btn / .input / .tag),
+ * 不再套组件库:样式完全自己掌控,也省掉整包 Element Plus 的体积。 */
+*, *::before, *::after { box-sizing: border-box; }
 
-html,
-body,
-#app {
-  height: 100%;
-  margin: 0;
-}
+html, body, #app { height: 100%; margin: 0; }
 
 body {
   background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-display);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  transition: background var(--t-mid) var(--ease), color var(--t-mid) var(--ease);
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Element Plus 语义色 → 项目令牌(dark 由 html.dark + css-vars 兜底,浅色也一致) */
-:root {
-  --el-color-primary: var(--accent);
-  --el-color-primary-light-3: #4ade80;
-  --el-color-primary-light-5: #86efac;
-  --el-color-primary-light-7: #bbf7d0;
-  --el-color-primary-light-8: #d1fae5;
-  --el-color-primary-light-9: var(--accent-soft);
-  --el-color-primary-dark-2: var(--accent-strong);
-  --el-border-radius-base: var(--radius-sm);
-  --el-font-family: var(--font-display);
-  --el-text-color-primary: var(--text);
-  --el-text-color-regular: var(--text);
-  --el-text-color-secondary: var(--text-dim);
-  --el-border-color: var(--border);
-  --el-border-color-light: var(--border);
-  --el-border-color-lighter: var(--border);
-  --el-bg-color: var(--bg-panel);
-  --el-bg-color-overlay: var(--bg-panel);
-  --el-fill-color-blank: var(--bg-panel);
-  --el-fill-color-light: var(--bg-soft);
-  --el-fill-color-lighter: var(--bg-soft);
+h1, h2, h3, h4, p { margin: 0; }
+/* 避免段落最后一行只剩一两个字(中文随处可断,窄栏里很常见) */
+p, li { text-wrap: pretty; }
+h1, h2, h3 { font-weight: 650; letter-spacing: -0.01em; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+input, textarea { font: inherit; color: inherit; }
+svg { flex: none; }
+
+::selection { background: var(--accent-soft); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+
+/* 滚动条:细、贴边、平时几乎不可见 */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--ink-3); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 按钮 ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 14px; border-radius: var(--r); border: 1px solid transparent;
+  font-size: 14px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer;
+  background: transparent; color: var(--ink);
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease), color var(--t) var(--ease), opacity var(--t) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-secondary { background: var(--surface); border-color: var(--line-strong); }
+.btn-secondary:hover:not(:disabled) { background: var(--fill); }
+.btn-ghost { color: var(--ink-2); }
+.btn-ghost:hover:not(:disabled) { background: var(--fill); color: var(--ink); }
+.btn-danger { background: var(--bad); color: #fff; }
+.btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-sm { height: 28px; padding: 0 10px; font-size: 13px; border-radius: var(--r-sm); gap: 5px; }
+.btn-lg { height: 42px; padding: 0 20px; font-size: 15px; }
+.btn-icon { width: 34px; padding: 0; }
+.btn-icon.btn-sm { width: 28px; }
+.btn .spin { animation: spin 0.9s linear infinite; }
+
+/* ── 输入 ── */
+.input, .textarea {
+  width: 100%; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface);
+  color: var(--ink); font-size: 14px; outline: none;
+  transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+}
+.input { height: 38px; padding: 0 12px; }
+.textarea { padding: 10px 12px; line-height: 1.7; resize: none; }
+.input::placeholder, .textarea::placeholder { color: var(--ink-3); }
+.input:focus, .textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input.invalid { border-color: var(--bad); }
+
+/* ── 小标签 / 键位提示 ── */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px;
+  border-radius: 999px; background: var(--fill); color: var(--ink-2); font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.tag-accent { background: var(--accent-soft); color: var(--accent); }
+.kbd {
+  display: inline-block; min-width: 18px; padding: 0 5px; border: 1px solid var(--line-strong); border-bottom-width: 2px;
+  border-radius: 5px; font-family: var(--font-sans); font-size: 11px; line-height: 16px; text-align: center; color: var(--ink-2); background: var(--surface);
 }
 
-html.dark {
-  color-scheme: dark;
-}
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.num { font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
 
-/* 滚动条 */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
-  background-clip: content-box;
-  border: 2px solid transparent;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* 等待中的三个点:检索、批改、生成总结都用它 */
+.dots { display: inline-flex; gap: 3px; align-items: center; }
+.dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: 0.25; animation: dot 1.2s infinite ease-in-out; }
+.dots i:nth-child(2) { animation-delay: 0.15s; }
+.dots i:nth-child(3) { animation-delay: 0.3s; }
 
-/* 选中高亮与焦点环 */
-::selection {
-  background: var(--accent-soft);
-}
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
+/* 骨架屏:内容还没到时占住版面,避免到达瞬间整页跳动 */
+.skeleton { border-radius: var(--r-sm); background: linear-gradient(90deg, var(--fill) 25%, var(--fill-strong) 50%, var(--fill) 75%); background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite; }
 
-/* 通用可点击反馈 */
-button,
-[role='button'],
-.el-button,
-.el-menu-item,
-.el-tree-node__content,
-.clickable {
-  cursor: pointer;
-}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes dot { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* 尊重减弱动效 */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
-/* ── 手机端全局兜底(≤720px) ── */
+/* iOS Safari 对字号 <16px 的输入框聚焦时会自动放大页面,手机上统一提到 16px */
 @media (max-width: 720px) {
-  /* iOS Safari 会对字号 <16px 的输入框聚焦时自动放大页面,手机上统一提到 16px */
-  .el-input__inner,
-  .el-textarea__inner {
-    font-size: 16px;
-  }
-  /* ElMessage 默认 min-width:380px、ElMessageBox 默认 420px 定宽,手机上必然溢出 */
-  .el-message {
-    min-width: 0;
-    max-width: calc(100vw - 28px);
-    box-sizing: border-box;
-  }
-  .el-message-box {
-    max-width: calc(100vw - 28px);
-  }
+  .input, .textarea { font-size: 16px; }
 }

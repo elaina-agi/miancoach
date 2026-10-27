@@ -1,224 +1,247 @@
 <template>
-  <div class="page">
-    <header class="head">
-      <div>
+  <div class="page-scroll">
+    <div class="records">
+      <header class="intro">
         <h1>复盘</h1>
-        <p class="sub">批改记录会告诉你:哪一类题是你真正的薄弱区。</p>
-      </div>
-    </header>
+        <p>每次批改都会记在这里。先看哪一块最弱，再点进对应场次回看漏掉的点。</p>
+      </header>
 
-    <div v-if="sessions.length === 0" class="card empty">
-      <el-icon :size="40"><DataAnalysis /></el-icon>
-      <p>还没有面试记录。去「模拟面试」答两题,这里就会长出你的薄弱雷达。</p>
-      <el-button type="primary" @click="$router.push('/quiz')">去模拟面试</el-button>
+      <div v-if="loading" class="kpis">
+        <div v-for="i in 4" :key="i" class="kpi"><div class="skeleton" style="width: 50%; height: 12px" /><div class="skeleton" style="width: 40%; height: 28px; margin-top: 12px" /></div>
+      </div>
+
+      <div v-else-if="failed" class="empty">
+        <CircleAlert :size="26" />
+        <h2>复盘数据加载失败</h2>
+        <p>确认后端已启动，再试一次。</p>
+        <button class="btn btn-secondary" @click="load"><RotateCcw :size="15" />重试</button>
+      </div>
+
+      <div v-else-if="!sessions.length" class="empty">
+        <ChartNoAxesColumn :size="26" />
+        <h2>还没有面试记录</h2>
+        <p>去模拟面试答几道题，这里会按板块统计出你的薄弱点。</p>
+        <RouterLink to="/quiz" class="btn btn-primary"><NotebookPen :size="15" />开始模拟面试</RouterLink>
+      </div>
+
+      <template v-else>
+        <!-- 总览 -->
+        <section class="kpis" aria-label="总览">
+          <div class="kpi"><span class="k">面试场次</span><span class="v">{{ overview?.sessions ?? sessions.length }}</span></div>
+          <div class="kpi"><span class="k">作答题数</span><span class="v">{{ overview?.answered ?? '—' }}</span></div>
+          <div class="kpi">
+            <span class="k">平均分</span>
+            <span class="v-row">
+              <span class="v">{{ avg ?? '—' }}</span>
+              <span v-if="avg != null" class="band" :class="scoreBand(avg)">{{ scoreLabel(avg) }}</span>
+            </span>
+          </div>
+          <div class="kpi"><span class="k">累计漏掉的点</span><span class="v">{{ overview?.missed ?? '—' }}</span></div>
+        </section>
+
+        <div class="two">
+          <!-- 薄弱点:均分最低的排在最前 -->
+          <section class="panel">
+            <div class="panel-head">
+              <h2>薄弱点</h2>
+              <span class="panel-sub">按板块 / 类目 · 均分从低到高</span>
+            </div>
+            <ul class="weak">
+              <li v-for="w in shownWeak" :key="(w.groupTag ?? '') + '/' + (w.category ?? '')" class="w-row">
+                <div class="w-top">
+                  <span class="w-name">{{ groupLabel(w.groupTag) }}<template v-if="w.category"><span class="w-sep">/</span>{{ w.category }}</template></span>
+                  <span class="w-meta num">{{ w.answered }} 题 · 漏 {{ w.missed }} 点</span>
+                  <RouterLink v-if="w.groupTag" :to="{ path: '/quiz', query: { scope: w.groupTag } }" class="w-go" :title="`练${groupLabel(w.groupTag)}`">
+                    去练<ArrowRight :size="13" />
+                  </RouterLink>
+                </div>
+                <div v-if="w.avgScore != null" class="w-bar-row">
+                  <div class="w-track"><div class="w-fill" :class="scoreBand(w.avgScore)" :style="{ width: Math.max(1, w.avgScore) + '%' }" /></div>
+                  <span class="w-val num">{{ Math.round(w.avgScore) }}<small>{{ scoreLabel(w.avgScore) }}</small></span>
+                </div>
+                <div v-else class="w-none">未评分</div>
+              </li>
+            </ul>
+            <button v-if="weakness.length > WEAK_LIMIT" class="btn btn-ghost btn-sm more" @click="weakAll = !weakAll">
+              {{ weakAll ? '收起' : `展开全部 ${weakness.length} 项` }}<ChevronDown :size="14" :class="{ flip: weakAll }" />
+            </button>
+          </section>
+
+          <section class="panel trend-panel">
+            <div class="panel-head">
+              <h2>最近场次得分</h2>
+              <span class="panel-sub">每场均分，最多显示 20 场</span>
+            </div>
+            <ScoreTrend v-if="trend.length" :points="trend" @select="openById" />
+            <p v-else class="panel-empty">还没有评过分的场次。</p>
+          </section>
+        </div>
+
+        <!-- 全部场次:也是上面柱状图的表格版 -->
+        <section class="panel">
+          <div class="panel-head"><h2>面试记录</h2><span class="panel-sub">{{ sessions.length }} 场</span></div>
+          <ul class="sess">
+            <li v-for="s in sessions" :key="s.id">
+              <button class="s-row" :class="{ on: active?.id === s.id }" @click="active = s">
+                <span class="s-date">{{ friendlyDate(s.createdAt) }}</span>
+                <span class="s-scope">{{ groupLabel(s.groupTag) }}</span>
+                <span class="s-n num">{{ s.answered }} 题</span>
+                <ScoreBadge :score="s.avgScore == null ? null : Math.round(s.avgScore)" />
+                <ChevronRight :size="16" class="s-chev" />
+              </button>
+            </li>
+          </ul>
+        </section>
+      </template>
     </div>
 
-    <template v-else>
-      <!-- 概览卡 -->
-      <div class="cards">
-        <div class="card kpi"><div class="k">面试次数</div><div class="v">{{ sessions.length }}</div></div>
-        <div class="card kpi"><div class="k">平均得分</div><div class="v">{{ avgScore == null ? '—' : avgScore }}</div></div>
-        <div class="card kpi"><div class="k">作答累计</div><div class="v">{{ totalAnswers }}</div></div>
-        <div class="card kpi"><div class="k">累计漏点</div><div class="v warn">{{ totalMissed }}</div></div>
-      </div>
-
-      <div class="two">
-        <!-- 会话列表 -->
-        <aside class="sessions card">
-          <div class="mini-title">面试场次</div>
-          <div class="slist">
-            <button v-for="s in sessions" :key="s.id" class="sess" :class="{ on: activeId === s.id }" @click="open(s)">
-              <span class="sess-date">{{ fmt(s.createdAt) }}</span>
-              <span class="sess-scope">{{ s.groupTag || '全题库' }}</span>
-            </button>
-          </div>
-        </aside>
-
-        <!-- 选中的场次明细 -->
-        <section class="detail card">
-          <div v-if="!active" class="ph">选一场面试查看逐题评分</div>
-          <template v-else>
-            <div class="detail-head">
-              <div class="mini-title">场次 {{ fmt(active.createdAt) }} · {{ active.groupTag || '全题库' }}</div>
-              <el-button size="small" :loading="reportLoading" @click="genReport">
-                <el-icon v-if="!reportLoading"><MagicStick /></el-icon>
-                {{ report ? '重新生成总结' : 'AI 总结' }}
-              </el-button>
-            </div>
-            <div v-if="report" class="report card-soft">
-              <div class="rt">AI 场次总结 · 均分 {{ report.avgScore.toFixed(1) }}</div>
-              <MarkdownView :content="report.report" />
-            </div>
-            <div class="answers">
-              <details v-for="a in answers" :key="a.id" class="ans-item">
-                <summary>
-                  <div class="aq">
-                    <ScoreRing :score="a.score" :size="34" />
-                    <div class="aq-body">
-                      <span class="aq-q">{{ a.question }}</span>
-                      <span class="aq-meta">{{ a.groupTag }} · {{ a.category || '' }} · {{ fmt(a.createdAt) }}</span>
-                    </div>
-                  </div>
-                </summary>
-                <div class="ans-body">
-                  <div class="block"><div class="bt">我的作答</div>
-                    <p class="pre">{{ a.userAnswer }}</p></div>
-                  <GradePanel v-if="parsed(a)" :score="parsed(a)!.score" :hits="parsed(a)!.hits"
-                              :missing="parsed(a)!.missing" :comment="parsed(a)!.comment" />
-                  <div v-else class="ph small">此条没有批改数据</div>
-                </div>
-              </details>
-            </div>
-          </template>
-        </section>
-      </div>
-
-      <!-- 薄弱聚合 -->
-      <section class="card weak">
-        <div class="mini-title">薄弱点 · 按板块/类目</div>
-        <div class="t-scroll">
-          <table class="weak-t">
-            <thead><tr><th>范围</th><th>作答</th><th>均分</th><th>漏点</th></tr></thead>
-            <tbody>
-              <tr v-for="w in weakness" :key="w.groupTag + w.category">
-                <td>{{ w.groupTag }}<span v-if="w.category" class="dim"> / {{ w.category }}</span></td>
-                <td>{{ w.answered }}</td>
-                <td>{{ w.avgScore ?? '—' }}</td>
-                <td class="missed">{{ w.missed }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </template>
+    <Sheet v-model:open="sheetOpen" side="right" :width="640" label="场次详情">
+      <SessionDetail v-if="active" :session="active" @close="active = null" />
+    </Sheet>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import dayjs from 'dayjs'
+import { computed, onMounted, ref, shallowRef } from 'vue'
+import {
+  ArrowRight, ChartNoAxesColumn, ChevronDown, ChevronRight, CircleAlert, NotebookPen, RotateCcw,
+} from 'lucide-vue-next'
+import Sheet from '../components/ui/Sheet.vue'
+import ScoreBadge from '../components/quiz/ScoreBadge.vue'
+import ScoreTrend, { type TrendPoint } from '../components/quiz/ScoreTrend.vue'
+import SessionDetail from '../components/quiz/SessionDetail.vue'
 import { quizApi } from '../api/client'
-import type { AnswerRow, SessionRow, WeakRow, Grade } from '../api/types'
-import { ElMessage } from 'element-plus'
-import { MagicStick } from '@element-plus/icons-vue'
-import ScoreRing from '../components/ScoreRing.vue'
-import GradePanel from '../components/GradePanel.vue'
-import MarkdownView from '../components/MarkdownView.vue'
+import type { QuizOverview, SessionRow, WeakRow } from '../api/types'
+import { groupLabel } from '../lib/catalog'
+import { friendlyDate, scoreBand, scoreLabel } from '../lib/format'
 
-interface SessionReport { sessionId: string; answered: number; avgScore: number; report: string }
+const WEAK_LIMIT = 6
 
-const sessions = ref<SessionRow[]>([])
-const answers = ref<AnswerRow[]>([])
-const weakness = ref<WeakRow[]>([])
-const activeId = ref('')
-const report = ref<SessionReport | null>(null)
-const reportLoading = ref(false)
+const loading = ref(true)
+const failed = ref(false)
+const sessions = shallowRef<SessionRow[]>([])
+const weakness = shallowRef<WeakRow[]>([])
+const overview = shallowRef<QuizOverview | null>(null)
+const weakAll = ref(false)
+const active = shallowRef<SessionRow | null>(null)
 
-const active = computed(() => sessions.value.find((s) => s.id === activeId.value))
-const totalAnswers = computed(() => sessions.value.length)
-const totalMissed = computed(() => weakness.value.reduce((s, w) => s + w.missed, 0))
-const avgScore = computed(() => {
-  const scored = answers.value.filter((a) => a.score != null)
-  if (!scored.length) return null
-  return Math.round(scored.reduce((s, a) => s + (a.score as number), 0) / scored.length)
+const sheetOpen = computed({
+  get: () => active.value !== null,
+  set: (v) => { if (!v) active.value = null },
 })
 
-function fmt(iso: string): string {
-  return dayjs(iso).format('MM-DD HH:mm')
+const avg = computed(() => (overview.value?.avgScore == null ? null : Math.round(overview.value.avgScore)))
+
+// 后端按漏点数排序;复盘时更想先看"答得最差的",这里改按均分升序,没评分的排最后
+const sortedWeak = computed(() => [...weakness.value].sort((a, b) => {
+  if (a.avgScore == null) return b.avgScore == null ? b.missed - a.missed : 1
+  if (b.avgScore == null) return -1
+  return a.avgScore - b.avgScore || b.missed - a.missed
+}))
+const shownWeak = computed(() => (weakAll.value ? sortedWeak.value : sortedWeak.value.slice(0, WEAK_LIMIT)))
+
+/** 柱状图:时间正序,最近 20 场有分数的 */
+const trend = computed<TrendPoint[]>(() => sessions.value
+  .filter((s) => s.avgScore != null)
+  .slice(0, 20)
+  .reverse()
+  .map((s) => ({ id: s.id, createdAt: s.createdAt, avg: Math.round(s.avgScore as number), answered: s.answered })))
+
+function openById(id: string) {
+  active.value = sessions.value.find((s) => s.id === id) ?? null
 }
 
-function parsed(a: AnswerRow): Grade | null {
-  if (!a.gradeJson) return null
+async function load() {
+  loading.value = true
+  failed.value = false
   try {
-    return JSON.parse(a.gradeJson) as Grade
-  } catch { return null }
-}
-
-async function open(s: SessionRow) {
-  activeId.value = s.id
-  report.value = null
-  try {
-    answers.value = await quizApi.answers(s.id)
-  } catch { answers.value = [] }
-}
-
-async function genReport() {
-  if (!activeId.value) return
-  reportLoading.value = true
-  try {
-    report.value = await quizApi.report(activeId.value)
-  } catch (e) {
-    ElMessage.error('总结生成失败: ' + (e as Error).message)
+    const [s, w, o] = await Promise.all([quizApi.sessions(), quizApi.weakness(), quizApi.overview()])
+    sessions.value = s
+    weakness.value = w
+    overview.value = o
+  } catch {
+    failed.value = true
   } finally {
-    reportLoading.value = false
+    loading.value = false
   }
 }
 
-onMounted(async () => {
-  try {
-    sessions.value = await quizApi.sessions()
-    weakness.value = await quizApi.weakness()
-    if (sessions.value.length) await open(sessions.value[0])
-  } catch { /* ignore */ }
-})
+onMounted(load)
 </script>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 14px; max-width: 1000px; margin: 0 auto; }
-.head h1 { margin: 0 0 4px; font-size: 24px; }
-.sub { margin: 0; color: var(--text-dim); font-size: 13.5px; }
-.card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-panel); padding: 16px 18px; box-shadow: var(--shadow-panel); }
-.empty { text-align: center; color: var(--text-faint); padding: 40px 20px; }
-.empty p { margin: 10px 0 14px; }
+.page-scroll { height: 100%; overflow-y: auto; }
+.records { max-width: 1040px; margin: 0 auto; padding: 40px 28px 64px; display: flex; flex-direction: column; gap: 16px; }
 
-.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.kpi { display: flex; flex-direction: column; gap: 2px; }
-.k { color: var(--text-dim); font-size: 12px; }
-.v { font-size: 26px; font-weight: 700; font-family: var(--font-display); }
-.v.warn { color: var(--warn); }
+.intro { margin-bottom: 12px; }
+.intro h1 { font-size: 28px; letter-spacing: -0.02em; }
+.intro p { margin-top: 8px; font-size: 15px; color: var(--ink-2); }
 
-.two { display: grid; grid-template-columns: 240px 1fr; gap: 14px; }
-.mini-title { font-weight: 600; font-size: 13px; margin-bottom: 10px; }
-.slist { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }
-.sess { display: flex; justify-content: space-between; border: 0; background: transparent; color: var(--text); padding: 8px 10px; border-radius: 8px; }
-.sess:hover { background: var(--bg-hover); }
-.sess.on { background: var(--accent-soft); }
-.sess-date { font-family: var(--font-display); font-size: 12px; }
-.sess-scope { color: var(--text-faint); font-size: 12px; }
+.empty { margin-top: 24px; padding: 56px 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--r-xl); color: var(--ink-3); }
+.empty h2 { margin-top: 4px; font-size: 17px; color: var(--ink); }
+.empty p { font-size: 14px; margin-bottom: 8px; }
 
-.answers { display: flex; flex-direction: column; gap: 8px; }
-.detail-head { display: flex; justify-content: space-between; align-items: center; }
-.report { margin: 10px 0; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--bg-soft); padding: 12px 14px; }
-.report .rt { font-size: 12px; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
-.card-soft { box-shadow: none; }
-.ans-item { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft); }
-.ans-item summary { list-style: none; cursor: pointer; padding: 10px 12px; }
-.ans-item summary::-webkit-details-marker { display: none; }
-.ans-item[open] summary { border-bottom: 1px solid var(--border); }
-.aq { display: flex; align-items: center; gap: 12px; }
-.aq-body { display: flex; flex-direction: column; min-width: 0; }
-.aq-q { font-size: 13.5px; line-height: 1.4; }
-.aq-meta { font-size: 11px; color: var(--text-faint); }
-.ans-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
-.block .bt { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
-.pre { white-space: pre-wrap; font-size: 13px; color: var(--text-dim); margin: 0; }
-.ph { color: var(--text-faint); text-align: center; padding: 30px 0; font-size: 13px; }
-.ph.small { padding: 10px 0; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.kpi { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.k { font-size: 13px; color: var(--ink-3); }
+.v-row { display: flex; align-items: center; gap: 10px; }
+/* 统计值用比例数字:等宽数字在大字号下显得松 */
+.v { font-size: 30px; font-weight: 650; line-height: 1.15; letter-spacing: -0.02em; }
+.band { height: 22px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.band.good { background: var(--good-soft); }
+.band.mid { background: var(--mid-soft); }
+.band.bad { background: var(--bad-soft); }
 
-.weak-t { width: 100%; border-collapse: collapse; font-size: 13px; }
-.weak-t th, .weak-t td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
-.weak-t th { color: var(--text-dim); font-weight: 600; font-size: 12px; }
-.weak-t .dim { color: var(--text-faint); }
-.missed { color: var(--warn); font-weight: 600; }
-/* 极窄屏下表格不挤压,横向滚动兜底 */
-.t-scroll { overflow-x: auto; }
+.two { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
+/* 得分图那张卡片和左边薄弱点等高,图表撑满,右边不空出一截 */
+.trend-panel { display: flex; flex-direction: column; }
+.panel { padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); min-width: 0; }
+.panel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+.panel-head h2 { font-size: 15.5px; }
+.panel-sub { font-size: 12.5px; color: var(--ink-3); }
+.panel-empty { font-size: 13.5px; color: var(--ink-3); padding: 24px 0; }
 
-@media (max-width: 860px) {
+.weak { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 16px; }
+.w-top { display: flex; align-items: baseline; gap: 10px; }
+.w-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.w-sep { margin: 0 5px; color: var(--ink-3); font-weight: 400; }
+.w-meta { flex: none; font-size: 12.5px; color: var(--ink-3); }
+.w-go { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; font-weight: 500; color: var(--accent); }
+.w-go:hover { text-decoration: underline; }
+.w-bar-row { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+/* 横条:8px 粗,同色系浅底轨;数据端圆角、基线方角 */
+.w-track { flex: 1; height: 8px; border-radius: 4px; background: var(--fill); overflow: hidden; }
+.w-fill { height: 100%; border-radius: 0 4px 4px 0; }
+.w-fill.good { background: var(--good); }
+.w-fill.mid { background: var(--mid); }
+.w-fill.bad { background: var(--bad); }
+.w-val { flex: none; min-width: 72px; display: inline-flex; align-items: baseline; gap: 5px; font-size: 14px; font-weight: 600; }
+.w-val small { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.w-none { margin-top: 6px; font-size: 12.5px; color: var(--ink-3); }
+.more { margin: 14px 0 0 -8px; }
+.more .flip { transform: rotate(180deg); }
+
+.sess { margin: 0 -10px; padding: 0; list-style: none; }
+.s-row { width: 100%; display: flex; align-items: center; gap: 14px; height: 48px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; cursor: pointer; text-align: left; transition: background var(--t) var(--ease); }
+.s-row:hover, .s-row.on { background: var(--fill); }
+.s-date { width: 140px; flex: none; font-size: 14px; font-weight: 500; }
+.s-scope { flex: 1; min-width: 0; font-size: 14px; color: var(--ink-2); }
+.s-n { flex: none; width: 48px; text-align: right; font-size: 13px; color: var(--ink-3); }
+.s-chev { flex: none; color: var(--ink-3); }
+
+@media (max-width: 900px) {
   .two { grid-template-columns: 1fr; }
-  .cards { grid-template-columns: repeat(2, 1fr); }
+  .kpis { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 720px) {
-  .card { padding: 13px 14px; }
-  .v { font-size: 22px; }
+  .records { padding: 22px 16px 40px; }
+  .intro h1 { font-size: 22px; }
+  .intro p { font-size: 14px; }
+  .kpi { padding: 14px 16px; }
+  .v { font-size: 24px; }
+  .panel { padding: 16px; }
+  .s-date { width: auto; flex: 1; }
+  .s-scope { flex: none; width: 64px; }
+  .s-n { display: none; }
 }
 </style>

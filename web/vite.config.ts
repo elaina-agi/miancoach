@@ -13,10 +13,11 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-    // 开发期把 /api 代理到后端,前端免跨域(SSE 也走同源)
+    // 开发期把 /api 代理到后端,前端免跨域(SSE 也走同源)。
+    // 同时跑两套后端对比时用 VITE_API_TARGET=http://localhost:8081 指到另一个
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:8080',
         changeOrigin: true,
       },
     },

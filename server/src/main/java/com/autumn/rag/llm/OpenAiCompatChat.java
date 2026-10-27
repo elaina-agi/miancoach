@@ -20,7 +20,7 @@ public class OpenAiCompatChat implements ChatProvider {
 
     public OpenAiCompatChat(AppProperties.Chat props, ObjectMapper om) {
         this.props = props;
-        this.http = new OpenAiHttp(om, props.connectTimeoutSecs());
+        this.http = new OpenAiHttp(om, props.connectTimeoutSecs(), props.proxyHost(), props.proxyPort());
     }
 
     @Override

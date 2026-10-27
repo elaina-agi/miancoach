@@ -56,7 +56,8 @@ curl http://localhost:8080/api/meta                    # 确认 chatReal/embedRe
 **4. 起前端**
 
 ```bash
-cd web && npm install && npm run dev     # http://localhost:5173,/api 已代理到 8080
+cd web && pnpm install && pnpm dev       # http://localhost:5173,/api 已代理到 8080
+pnpm typecheck                           # vue-tsc 类型检查
 ```
 
 Swagger:http://localhost:8080/swagger-ui.html  ·  接口清单:`server/api.http`
@@ -99,7 +100,11 @@ curl -X POST http://127.0.0.1:8080/api/admin/reindex    # 首次入库;server �
 - **问答**:`POST /api/chat/ask`(SSE:refs→delta→done),子段命中片段前置进上下文,答案引用可点开原文
 - **模拟面试**:`/api/quiz/start|pick|grade`,批改=LLM 对照标准原文逐点评分(hits/missing),落库
 - **复盘**:场次记录 + 按板块/类目的薄弱聚合
-- 前端四页(问答/知识库/模拟面试/复盘),deep-first 设计(代码绿 x 深夜自习,ui-ux-pro-max 定调),深浅双主题
+- 前端四页(问答/知识库/模拟面试/复盘),不依赖组件库(自写弹框/侧滑面板/提示,图标用 lucide),暖白纸色 + 玉绿强调,深浅主题跟随系统
+  - 问答:会话 id 进 URL(刷新不丢),回答里的 [n] 可点开来源原文(宽屏并排、窄屏侧滑),往上翻时不被流式输出拽回底部
+  - 知识库:板块筛选 + 搜索高亮,题号进 URL,← → 翻上一题/下一题
+  - 模拟面试:选范围和题量 → 作答(Ctrl+Enter 提交)→ 批改 → 本场总结;同一场不重复出题
+  - 复盘:统计卡 + 薄弱点(均分从低到高,可一键去练)+ 场次得分柱状图 + 逐题回看
 - Swagger: http://localhost:8080/swagger-ui.html
 
 - **账号**:邮箱验证码注册 + 密码登录(BCrypt + JWT);游客模式,不登录也能问答和浏览,需要时再弹登录框

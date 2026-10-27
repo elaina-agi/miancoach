@@ -1,6 +1,7 @@
 package com.autumn.rag.web;
 
 import com.autumn.rag.common.NotFoundException;
+import com.autumn.rag.dao.QuizDao;
 import com.autumn.rag.dao.QuizDao.AnswerRow;
 import com.autumn.rag.dao.QuizDao.SessionRow;
 import com.autumn.rag.dao.QuizDao.WeakRow;
@@ -32,7 +33,8 @@ public class QuizController {
         this.quizService = quizService;
     }
 
-    public record ScopeReq(String groupTag) {}
+    /** exclude:本场出过但没作答的题(点了「换一题」),再抽时跳过;已作答的后端自己查 */
+    public record ScopeReq(String groupTag, List<Long> exclude) {}
 
     public record StartResp(UUID sessionId, Long chunkId, String group, String category, String question) {}
 
@@ -47,7 +49,8 @@ public class QuizController {
     @Operation(summary = "在当前会话里抽下一题")
     @PostMapping("/session/{id}/pick")
     public QuizService.StartOut pick(@PathVariable UUID id, @RequestBody(required = false) ScopeReq body) {
-        return quizService.pick(id, body == null ? null : body.groupTag());
+        return body == null ? quizService.pick(id, null, List.of())
+                : quizService.pick(id, body.groupTag(), body.exclude());
     }
 
     @Operation(summary = "批改一题(以标准原文为基准,结构化评分),落库")
@@ -56,10 +59,17 @@ public class QuizController {
         return quizService.grade(id, req.chunkId(), req.userAnswer());
     }
 
-    @Operation(summary = "历史会话列表")
+    @Operation(summary = "历史会话列表", description = "带每场的作答数与均分;answeredOnly=true 只返回答过题的场次")
     @GetMapping("/sessions")
-    public List<SessionRow> sessions(@RequestParam(defaultValue = "50") int limit) {
-        return quizService.sessions(limit);
+    public List<SessionRow> sessions(@RequestParam(defaultValue = "50") int limit,
+                                     @RequestParam(defaultValue = "false") boolean answeredOnly) {
+        return quizService.sessions(limit, answeredOnly);
+    }
+
+    @Operation(summary = "复盘总览:场次数 / 作答数 / 平均分 / 累计漏点")
+    @GetMapping("/overview")
+    public QuizDao.Overview overview() {
+        return quizService.overview();
     }
 
     @Operation(summary = "某次会话的全部作答")
