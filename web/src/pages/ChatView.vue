@@ -3,12 +3,12 @@
     <!-- 历史对话:宽屏常驻左侧(可收起),窄屏收进左侧滑出面板 -->
     <aside v-if="!isNarrow" v-show="!histCollapsed" class="hist-pane">
       <ChatHistory :sessions="sessions" :active-id="currentSessionId" :loading="sessionsLoading" :disabled="streaming"
-                   @select="openSession" @remove="removeSession" @new="newChat" />
+                   :guest="guest" @select="openSession" @remove="removeSession" @new="newChat" @login="openLogin()" />
     </aside>
     <Sheet v-else v-model:open="histSheet" side="left" :width="300" label="历史对话">
       <ChatHistory :sessions="sessions" :active-id="currentSessionId" :loading="sessionsLoading" :disabled="streaming"
-                   @select="(id) => { histSheet = false; openSession(id) }" @remove="removeSession"
-                   @new="() => { histSheet = false; newChat() }" />
+                   :guest="guest" @select="(id) => { histSheet = false; openSession(id) }" @remove="removeSession"
+                   @new="() => { histSheet = false; newChat() }" @login="() => { histSheet = false; openLogin() }" />
     </Sheet>
 
     <section class="conv">
@@ -137,12 +137,14 @@ import Sheet from '../components/ui/Sheet.vue'
 import Composer from '../components/chat/Composer.vue'
 import ChatHistory from '../components/chat/ChatHistory.vue'
 import SourcePanel from '../components/chat/SourcePanel.vue'
+import { authReady, isLoggedIn, openLogin, watchUser } from '../lib/auth'
 import { flatten, groupLabel, loadMeta, loadTree, meta, tree, type FlatQuestion } from '../lib/catalog'
 import { confirm } from '../lib/confirm'
 import { useMediaQuery } from '../lib/responsive'
 import { createSmoothAppender, type SmoothAppender } from '../lib/smoothStream'
 import { toast } from '../lib/toast'
 import { useOverlay } from '../lib/overlay'
+import { token } from '../lib/session'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -186,10 +188,13 @@ function toggleHistory() {
 }
 
 // ── 历史会话 ──
-// currentSessionId 为 null 表示"还没建会话":第一条消息发出时才建,不留空会话
+// currentSessionId 为 null 表示"还没建会话":第一条消息发出时才建,不留空会话。
+// 游客不建会话,问答不进历史,一直是 null
 const sessions = ref<ChatSessionRow[]>([])
 const sessionsLoading = ref(true)
 const currentSessionId = ref<string | null>(null)
+// authReady 之前不算游客:/me 还没回来时就显示登录引导,已登录用户会看到它闪一下
+const guest = computed(() => authReady.value && !isLoggedIn.value)
 
 const convTitle = computed(() => {
   if (!messages.value.length) return '新对话'
@@ -198,6 +203,7 @@ const convTitle = computed(() => {
 
 /** 拉会话列表。每轮问答结束后都调一次——标题和"最后活跃时间"都变了。 */
 async function refreshSessions() {
+  if (!isLoggedIn.value) return
   try {
     sessions.value = await chatApi.sessions()
   } catch {
@@ -219,6 +225,12 @@ async function syncFromRoute() {
   if (streaming.value) stop() // 生成中切走:先停掉,免得流继续往别的会话里写
   if (!id) {
     resetChat()
+    return
+  }
+  if (!token.value) {
+    // 游客打开了一条会话链接(比如退出登录后按了后退):会话只有登录后才看得到
+    toast.info('登录后才能查看历史对话')
+    void router.replace('/chat')
     return
   }
   srcOpen.value = false
@@ -376,7 +388,8 @@ async function send(text?: string) {
   scrollBottom(true)
 
   // 本轮是新对话 → 先建会话。拿不到 id 就只影响历史记录,问答继续(和重排降级同一个思路)。
-  if (!currentSessionId.value) {
+  // 游客不建会话,这轮问答只留在页面上
+  if (!currentSessionId.value && isLoggedIn.value) {
     try {
       const id = (await chatApi.createSession(q)).sessionId
       currentSessionId.value = id
@@ -454,8 +467,20 @@ async function copy(text: string) {
 
 watch(() => route.params.sessionId, () => { void syncFromRoute() })
 
-onMounted(() => {
+// 登录、退出、token 失效都会换掉"这是谁的历史":列表按新身份重拉
+watchUser((uid) => {
+  if (!uid && currentSessionId.value) {
+    // 退出时开着的是账号里的会话:不能继续显示,也不能再往里写
+    if (streaming.value) stop()
+    resetChat()
+    void router.replace('/chat')
+  }
+  sessions.value = []
+  sessionsLoading.value = uid !== null
   void refreshSessions()
+})
+
+onMounted(() => {
   void loadMeta()
   // 树拉不到(后端没起)时 reshuffle 会退回几道固定的示例题
   void loadTree().then(reshuffle)

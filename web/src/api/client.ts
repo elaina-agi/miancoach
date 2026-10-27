@@ -1,6 +1,6 @@
 import type {
   AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, GradeOut, GroupCounts, GroupNode,
-  LoginOut, MetaInfo, QuizOverview, QuizQuestion, ReindexResult, SessionRow, UserView, WeakRow,
+  LoginOut, MetaInfo, QuizOverview, QuizQuestion, QuizReport, ReindexResult, ReportItem, SessionRow, UserView, WeakRow,
 } from './types'
 import { clearSession, token } from '../lib/session'
 
@@ -72,7 +72,9 @@ export const corpusApi = {
   reindex: () => post<ReindexResult>('/api/admin/reindex', {}),
 }
 
+// 登录用户走 session/{id} 这组(落库,复盘能回看);游客走 *Free 这组无状态接口,什么都不存
 export const quizApi = {
+  /** 登录时建场次;游客不建,返回里没有 sessionId */
   start: (groupTag?: string | null) => post<QuizQuestion>('/api/quiz/start', { groupTag: groupTag ?? null }),
   /** exclude:本场出过但没作答(被跳过)的题,后端再抽时跳过;已作答的后端自己会排除 */
   pick: (sessionId: string, groupTag?: string | null, exclude: number[] = []) =>
@@ -82,10 +84,16 @@ export const quizApi = {
   /** 只要答过题的场次:开了就走的空场次在复盘里没有意义 */
   sessions: () => json<SessionRow[]>('/api/quiz/sessions?limit=100&answeredOnly=true'),
   overview: () => json<QuizOverview>('/api/quiz/overview'),
-  report: (id: string) =>
-    json<{ sessionId: string; answered: number; avgScore: number; report: string }>(`/api/quiz/session/${id}/report`),
+  report: (id: string) => json<QuizReport>(`/api/quiz/session/${id}/report`),
   answers: (id: string) => json<AnswerRow[]>(`/api/quiz/session/${id}`),
   weakness: () => json<WeakRow[]>('/api/quiz/weakness'),
+
+  /** 游客:本场出过的题全部放进 exclude(后端没有场次可查) */
+  pickFree: (groupTag?: string | null, exclude: number[] = []) =>
+    post<QuizQuestion>('/api/quiz/pick', { groupTag: groupTag ?? null, exclude }),
+  gradeFree: (chunkId: number, userAnswer: string) => post<GradeOut>('/api/quiz/grade', { chunkId, userAnswer }),
+  /** 游客:场次没存,把本场每题的批改结果传回去生成总结 */
+  reportFree: (answers: ReportItem[]) => post<QuizReport>('/api/quiz/report', { answers }),
 }
 
 export interface StreamHandlers {
@@ -124,6 +132,8 @@ export function askStream(question: string, h: StreamHandlers, history?: History
       if (!resp.ok) {
         let msg = `HTTP ${resp.status}`
         try { const b = await resp.json(); if (b.error) msg = b.error } catch { /* ignore */ }
+        // 和 json() 同一条规则:带着 token 被 401 = 登录态失效,清掉后界面回到游客
+        if (resp.status === 401 && token.value) clearSession()
         h.onError?.(msg)
         return
       }

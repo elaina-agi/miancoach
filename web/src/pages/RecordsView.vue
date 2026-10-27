@@ -10,6 +10,16 @@
         <div v-for="i in 4" :key="i" class="kpi"><div class="skeleton" style="width: 50%; height: 12px" /><div class="skeleton" style="width: 40%; height: 28px; margin-top: 12px" /></div>
       </div>
 
+      <div v-else-if="guest" class="empty">
+        <LogIn :size="26" />
+        <h2>登录后查看复盘</h2>
+        <p>模拟面试的成绩跟着账号保存。游客也能练，只是成绩不会记下来。</p>
+        <div class="empty-actions">
+          <button class="btn btn-primary" @click="openLogin()"><LogIn :size="15" />登录 / 注册</button>
+          <RouterLink to="/quiz" class="btn btn-secondary"><NotebookPen :size="15" />先去练练</RouterLink>
+        </div>
+      </div>
+
       <div v-else-if="failed" class="empty">
         <CircleAlert :size="26" />
         <h2>复盘数据加载失败</h2>
@@ -102,9 +112,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import {
-  ArrowRight, ChartNoAxesColumn, ChevronDown, ChevronRight, CircleAlert, NotebookPen, RotateCcw,
+  ArrowRight, ChartNoAxesColumn, ChevronDown, ChevronRight, CircleAlert, LogIn, NotebookPen, RotateCcw,
 } from 'lucide-vue-next'
 import Sheet from '../components/ui/Sheet.vue'
 import ScoreBadge from '../components/quiz/ScoreBadge.vue'
@@ -112,6 +122,7 @@ import ScoreTrend, { type TrendPoint } from '../components/quiz/ScoreTrend.vue'
 import SessionDetail from '../components/quiz/SessionDetail.vue'
 import { quizApi } from '../api/client'
 import type { QuizOverview, SessionRow, WeakRow } from '../api/types'
+import { authReady, isLoggedIn, openLogin, watchUser } from '../lib/auth'
 import { groupLabel } from '../lib/catalog'
 import { friendlyDate, scoreBand, scoreLabel } from '../lib/format'
 
@@ -124,6 +135,7 @@ const weakness = shallowRef<WeakRow[]>([])
 const overview = shallowRef<QuizOverview | null>(null)
 const weakAll = ref(false)
 const active = shallowRef<SessionRow | null>(null)
+const guest = computed(() => authReady.value && !isLoggedIn.value)
 
 const sheetOpen = computed({
   get: () => active.value !== null,
@@ -166,7 +178,15 @@ async function load() {
   }
 }
 
-onMounted(load)
+// 登录态确定后才加载(/me 没回来前不知道是谁);之后登录、退出都按新身份重来
+watchUser((uid) => {
+  active.value = null
+  sessions.value = []
+  weakness.value = []
+  overview.value = null
+  if (uid) void load()
+  else loading.value = false
+})
 </script>
 
 <style scoped>
@@ -180,6 +200,7 @@ onMounted(load)
 .empty { margin-top: 24px; padding: 56px 24px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--r-xl); color: var(--ink-3); }
 .empty h2 { margin-top: 4px; font-size: 17px; color: var(--ink); }
 .empty p { font-size: 14px; margin-bottom: 8px; }
+.empty-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .kpi { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }

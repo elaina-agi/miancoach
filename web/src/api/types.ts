@@ -44,7 +44,8 @@ export interface AskRef {
 }
 
 export interface QuizQuestion {
-  sessionId: string
+  /** 游客不建场次,后端省略这个 key */
+  sessionId?: string
   chunkId: number
   group: string
   category: string | null
@@ -59,7 +60,8 @@ export interface Grade {
 }
 
 export interface GradeOut {
-  answerId: number
+  /** 游客批改不落库,后端省略这个 key */
+  answerId?: number
   group: string
   category: string | null
   question: string
@@ -96,6 +98,23 @@ export interface AnswerRow {
   score: number | null
   gradeJson: string | null
   createdAt: string
+}
+
+export interface QuizReport {
+  /** 游客的总结没有场次,后端省略这个 key */
+  sessionId?: string
+  answered: number
+  avgScore: number
+  report: string
+}
+
+/** 游客生成总结时传回去的一题 */
+export interface ReportItem {
+  question: string
+  groupTag: string | null
+  score: number | null
+  hits: string[]
+  missing: string[]
 }
 
 export interface WeakRow {

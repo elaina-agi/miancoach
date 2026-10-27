@@ -7,7 +7,11 @@
     </div>
 
     <div class="h-scroll">
-      <p v-if="loading && !sessions.length" class="h-empty">加载中…</p>
+      <div v-if="guest" class="h-guest">
+        <p>登录后，问过的问题会保存在这里，方便回头复习。现在的对话刷新页面就没了。</p>
+        <button class="btn btn-secondary btn-sm" @click="emit('login')"><LogIn :size="14" />登录 / 注册</button>
+      </div>
+      <p v-else-if="loading && !sessions.length" class="h-empty">加载中…</p>
       <p v-else-if="!sessions.length" class="h-empty">还没有对话记录。<br>问的每个问题都会留在这里，方便回头复习。</p>
 
       <section v-for="g in groups" :key="g.label" class="h-group">
@@ -27,7 +31,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Plus, Trash2 } from 'lucide-vue-next'
+import { LogIn, Plus, Trash2 } from 'lucide-vue-next'
 import type { ChatSessionRow } from '../../api/types'
 import { dayBucket } from '../../lib/format'
 
@@ -37,8 +41,10 @@ const props = defineProps<{
   loading?: boolean
   /** 生成中禁止切换/删除——切走的话流还在往旧会话里写,用户会看到错乱的内容 */
   disabled?: boolean
+  /** 游客没有历史,列表位置换成登录引导 */
+  guest?: boolean
 }>()
-const emit = defineEmits<{ select: [id: string]; remove: [s: ChatSessionRow]; new: [] }>()
+const emit = defineEmits<{ select: [id: string]; remove: [s: ChatSessionRow]; new: []; login: [] }>()
 
 // 后端已按最后活跃倒序,这里只按本地日期分桶,桶内保持原顺序
 const groups = computed(() => {
@@ -58,6 +64,8 @@ const groups = computed(() => {
 .new-btn { width: 100%; justify-content: flex-start; gap: 8px; }
 .h-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 16px; }
 .h-empty { padding: 16px 8px; font-size: 13px; line-height: 1.8; color: var(--ink-3); }
+.h-guest { margin: 8px 4px; padding: 14px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); font-size: 13px; line-height: 1.75; color: var(--ink-2); }
+.h-guest .btn { margin-top: 10px; }
 .h-group + .h-group { margin-top: 10px; }
 .h-label { padding: 8px 8px 4px; font-size: 12px; font-weight: 500; color: var(--ink-3); }
 .h-item { position: relative; display: flex; align-items: center; height: 36px; padding: 0 6px 0 10px; border-radius: var(--r); cursor: pointer; color: var(--ink-2); transition: background var(--t) var(--ease), color var(--t) var(--ease); }

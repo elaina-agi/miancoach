@@ -1,6 +1,6 @@
 // 登录状态与登录弹框。游客模式:不登录也能用大部分功能,
 // 碰到需要账号的操作时调 requireLogin() 原地弹框,登录成功后调用方接着往下走。
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { authApi } from '../api/client'
 import type { LoginOut } from '../api/types'
 import { clearSession, currentUser, saveSession, token } from './session'
@@ -20,6 +20,17 @@ export async function initAuth(): Promise<void> {
   } finally {
     authReady.value = true
   }
+}
+
+/**
+ * 登录态确定后回调一次,之后每次登录、退出(含 token 失效被清掉)再回调。参数是当前用户 id,游客为 null。
+ * 启动时 /me 还没回来的那段时间不回调:那时还不知道是不是游客,按游客处理会让已登录用户的历史闪一下空。
+ * 在组件 setup 里调用,卸载时自动停止监听。
+ */
+export function watchUser(cb: (userId: string | null) => void): void {
+  watch(() => (authReady.value ? currentUser.value?.id ?? null : undefined), (id) => {
+    if (id !== undefined) cb(id)
+  }, { immediate: true })
 }
 
 export function logout(): void {

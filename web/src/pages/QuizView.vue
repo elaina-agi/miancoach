@@ -31,6 +31,10 @@
             </button>
             <span class="hint">作答时按 <span class="kbd">Ctrl + Enter</span> 提交</span>
           </div>
+          <p v-if="guest" class="guest-note">
+            <Info :size="15" />
+            <span>没登录也能练，只是成绩不会保存。<a href="#" @click.prevent="openLogin()">登录</a>后每一场都会记进复盘，方便回头查漏。</span>
+          </p>
         </section>
 
         <ol class="steps">
@@ -141,8 +145,12 @@
 
         <div class="end-row">
           <button class="btn btn-primary" @click="restart"><RotateCcw :size="15" />再来一场</button>
-          <RouterLink to="/records" class="btn btn-secondary"><ChartNoAxesColumn :size="15" />查看全部复盘</RouterLink>
+          <RouterLink v-if="sessionId" to="/records" class="btn btn-secondary"><ChartNoAxesColumn :size="15" />查看全部复盘</RouterLink>
+          <button v-else-if="guest" class="btn btn-secondary" @click="openLogin()"><LogIn :size="15" />登录后保存成绩</button>
         </div>
+        <p v-if="!sessionId" class="guest-note end-note">
+          <Info :size="15" /><span>这一场是游客模式，没有保存，离开页面就没了。</span>
+        </p>
       </template>
     </div>
   </div>
@@ -152,7 +160,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import {
-  ArrowRight, ChartNoAxesColumn, Check, ChevronRight, Flag, LoaderCircle, RotateCcw, Shuffle, Sparkles,
+  ArrowRight, ChartNoAxesColumn, Check, ChevronRight, Flag, Info, LoaderCircle, LogIn, RotateCcw, Shuffle, Sparkles,
 } from 'lucide-vue-next'
 import MarkdownView from '../components/MarkdownView.vue'
 import GradeResult from '../components/quiz/GradeResult.vue'
@@ -160,6 +168,7 @@ import ScoreMeter from '../components/quiz/ScoreMeter.vue'
 import ScoreBadge from '../components/quiz/ScoreBadge.vue'
 import { corpusApi, quizApi } from '../api/client'
 import type { ChunkFull, Grade, QuizQuestion } from '../api/types'
+import { authReady, isLoggedIn, openLogin, watchUser } from '../lib/auth'
 import { groupCounts, groupLabel, loadGroups, sortGroups } from '../lib/catalog'
 import { confirm } from '../lib/confirm'
 import { toast } from '../lib/toast'
@@ -172,7 +181,9 @@ const route = useRoute()
 const stage = ref<Stage>('setup')
 const scope = ref('')     // '' = 全题库
 const total = ref(5)      // 0 = 不限
+// 登录时是后端场次 id;游客为 '',抽题、批改、总结都走不落库的接口
 const sessionId = ref('')
+const guest = computed(() => authReady.value && !isLoggedIn.value)
 const rounds = ref<Round[]>([])
 /** 本场出过的题(含被「换一题」跳过的),再抽时排除 */
 let shown: number[] = []
@@ -227,6 +238,13 @@ function pickScope(): string | null {
   return scope.value || null
 }
 
+/** 抽下一题。游客没有场次可查,本场出过的题全靠 shown 排除 */
+function drawNext(): Promise<QuizQuestion> {
+  return sessionId.value
+    ? quizApi.pick(sessionId.value, pickScope(), shown)
+    : quizApi.pickFree(pickScope(), shown)
+}
+
 function beginRound(q: QuizQuestion) {
   rounds.value.push({ q, answer: '', grade: null })
   shown.push(q.chunkId)
@@ -243,7 +261,7 @@ async function start() {
   starting.value = true
   try {
     const q = await quizApi.start(pickScope())
-    sessionId.value = q.sessionId
+    sessionId.value = q.sessionId ?? ''
     rounds.value = []
     shown = []
     report.value = null
@@ -257,10 +275,9 @@ async function start() {
 
 /** 换一题:当前题不作答、不计入本场,直接抽下一道(后端会跳过本场出过的题) */
 async function skip() {
-  if (!sessionId.value) return
   picking.value = true
   try {
-    const q = await quizApi.pick(sessionId.value, pickScope(), shown)
+    const q = await drawNext()
     rounds.value.pop()
     beginRound(q)
   } catch (e) {
@@ -276,7 +293,9 @@ async function submit() {
   if (!r || !text || grading.value) return
   grading.value = true
   try {
-    const out = await quizApi.grade(sessionId.value, r.q.chunkId, text)
+    const out = sessionId.value
+      ? await quizApi.grade(sessionId.value, r.q.chunkId, text)
+      : await quizApi.gradeFree(r.q.chunkId, text)
     r.answer = text
     r.grade = out.grade
     stage.value = 'result'
@@ -296,7 +315,7 @@ async function next() {
   }
   picking.value = true
   try {
-    beginRound(await quizApi.pick(sessionId.value, pickScope(), shown))
+    beginRound(await drawNext())
   } catch (e) {
     toast.error('抽题失败：' + (e as Error).message)
   } finally {
@@ -327,7 +346,16 @@ function restart() {
 async function genReport() {
   reportLoading.value = true
   try {
-    report.value = (await quizApi.report(sessionId.value)).report
+    const out = sessionId.value
+      ? await quizApi.report(sessionId.value)
+      : await quizApi.reportFree(gradedRounds.value.map((r) => ({
+        question: r.q.question,
+        groupTag: r.q.group,
+        score: r.grade?.score ?? null,
+        hits: r.grade?.hits ?? [],
+        missing: r.grade?.missing ?? [],
+      })))
+    report.value = out.report
   } catch (e) {
     toast.error('总结生成失败：' + (e as Error).message)
   } finally {
@@ -355,6 +383,11 @@ onBeforeRouteLeave(async () => {
     return confirm({ title: '离开模拟面试？', message: '这题还没提交，离开后写下的内容会丢失。', confirmText: '离开' })
   }
   return true
+})
+
+// 面试中途退出登录:已答的题留在账号里,剩下的按游客继续,不再往那个场次里写
+watchUser((uid) => {
+  if (!uid) sessionId.value = ''
 })
 
 onMounted(() => {
@@ -390,6 +423,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKey))
 .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 .start-row { margin-top: 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .hint { font-size: 12.5px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 5px; }
+.guest-note { margin-top: 18px; display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.7; color: var(--ink-3); }
+.guest-note svg { flex: none; margin-top: 3px; }
+.guest-note a { color: var(--accent); font-weight: 500; }
+.guest-note a:hover { text-decoration: underline; }
+.end-note { margin-top: 14px; }
 
 .steps { margin: 28px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
 .steps li { counter-increment: step; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-3); line-height: 1.6; }
