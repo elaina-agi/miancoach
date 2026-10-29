@@ -15,7 +15,8 @@ public record AppProperties(
         Retrieval retrieval,
         Rerank rerank,
         Auth auth,
-        Mail mail) {
+        Mail mail,
+        Quota quota) {
 
     public record Corpus(String dir) {}
 
@@ -105,4 +106,10 @@ public record AppProperties(
             String provider,          // auto | smtp | mock
             String from,
             String fromName) {}
+
+    /**
+     * 调大模型的接口(问答 / 批改 / 总结)每天的次数上限,控成本。0 = 不限。
+     * guestDaily 是所有游客合用的一个额度,userDaily 是每个登录用户各自的(为什么这样分见 QuotaService)。
+     */
+    public record Quota(int guestDaily, int userDaily) {}
 }

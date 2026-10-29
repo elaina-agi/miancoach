@@ -58,7 +58,7 @@ class AuthServiceTest {
         jwt = new JwtService(Base64.getEncoder().encodeToString(new byte[32]), Duration.ofHours(1));
         // 只有 auth 这一项会被用到,其余传 null
         AppProperties props = new AppProperties(null, null, null, null, null,
-                new AppProperties.Auth("", 1, 10, 5, 60), null); // mail 传 null:发信端整个被 mock 掉了
+                new AppProperties.Auth("", 1, 10, 5, 60), null, null); // mail 传 null:发信端整个被 mock 掉了
         auth = new AuthService(userDao, codeDao, mail, jwt, props);
     }
 

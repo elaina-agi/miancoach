@@ -5,6 +5,7 @@ import com.autumn.rag.dao.QuizDao.AnswerRow;
 import com.autumn.rag.dao.QuizDao.SessionRow;
 import com.autumn.rag.dao.QuizDao.WeakRow;
 import com.autumn.rag.service.QuizService;
+import com.autumn.rag.service.QuotaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,6 +28,7 @@ import java.util.UUID;
 /**
  * 登录用户走 /session/{id}/... 这组,场次和作答落库,复盘页能回看;
  * 游客走 /pick、/grade、/report 这组无状态接口,什么都不存,本场数据只在前端页面里。
+ * 批改和总结要调大模型,计入每日额度(QuotaService);抽题不调,不计。
  */
 @Tag(name = "模拟面试", description = "抽题-作答-批改-复盘")
 @SecurityRequirement(name = "bearer")
@@ -35,9 +37,11 @@ import java.util.UUID;
 public class QuizController {
 
     private final QuizService quizService;
+    private final QuotaService quotaService;
 
-    public QuizController(QuizService quizService) {
+    public QuizController(QuizService quizService, QuotaService quotaService) {
         this.quizService = quizService;
+        this.quotaService = quotaService;
     }
 
     /** exclude:本场出过但没作答的题(点了「换一题」),再抽时跳过;登录用户已作答的后端自己查 */
@@ -69,6 +73,7 @@ public class QuizController {
     @PostMapping("/session/{id}/grade")
     public QuizService.GradeOut grade(@CurrentUser LoginUser user, @PathVariable UUID id,
                                       @RequestBody @Valid GradeReq req) {
+        quotaService.consume(user.id());
         return quizService.grade(user.id(), id, req.chunkId(), req.userAnswer());
     }
 
@@ -101,6 +106,7 @@ public class QuizController {
     @Operation(summary = "场次总结报告(LLM 汇总表现/薄弱点/复习建议)")
     @GetMapping("/session/{id}/report")
     public QuizService.ReportOut report(@CurrentUser LoginUser user, @PathVariable UUID id) {
+        quotaService.consume(user.id());
         return quizService.report(user.id(), id);
     }
 
@@ -116,12 +122,14 @@ public class QuizController {
     @Operation(summary = "批改一题(不落库)", description = "游客用。返回里没有 answerId")
     @PostMapping("/grade")
     public QuizService.GradeOut gradeFree(@RequestBody @Valid GradeReq req) {
+        quotaService.consume(null);
         return quizService.gradeFree(req.chunkId(), req.userAnswer());
     }
 
     @Operation(summary = "本场总结(不落库)", description = "游客用。场次没存,由前端把本场每题的批改结果传回来")
     @PostMapping("/report")
     public QuizService.ReportOut reportFree(@RequestBody @Valid ReportReq req) {
+        quotaService.consume(null);
         return quizService.reportFree(req.answers());
     }
 }

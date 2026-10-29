@@ -4,6 +4,7 @@ import com.autumn.rag.common.AuthException;
 import com.autumn.rag.dao.ChatDao;
 import com.autumn.rag.service.AskService;
 import com.autumn.rag.service.ChatService;
+import com.autumn.rag.service.QuotaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,10 +33,12 @@ public class ChatController {
 
     private final AskService askService;
     private final ChatService chatService;
+    private final QuotaService quotaService;
 
-    public ChatController(AskService askService, ChatService chatService) {
+    public ChatController(AskService askService, ChatService chatService, QuotaService quotaService) {
         this.askService = askService;
         this.chatService = chatService;
+        this.quotaService = quotaService;
     }
 
     public record AskReq(@NotBlank(message = "问题不能为空") String question,
@@ -59,6 +62,8 @@ public class ChatController {
             }
             chatService.requireOwner(user.id(), req.sessionId());
         }
+        // 额度同理:超了要回成 HTTP 429,前端才能和"回答中途出错"区分开
+        quotaService.consume(user == null ? null : user.id());
         return askService.ask(req.question(), req.sessionId(), req.history());
     }
 

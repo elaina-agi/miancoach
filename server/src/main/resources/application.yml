@@ -114,6 +114,13 @@ app:
     provider: ${BAGUWEN_MAIL_PROVIDER:auto}   # auto(配了 SMTP 密码即真实发) | smtp | mock(验证码打到日志)
     from: ${BAGUWEN_MAIL_FROM:}               # 只填地址,如 noreply@example.com;必须属于 Resend 里验证过的域名
     from-name: 面试陪练                        # 收件箱里显示的发件人名。写在这里而不是 .env:.env 里的中文会乱码
+
+  # ── 每日额度:调大模型的接口(问答 / 批改 / 总结)每天最多多少次,控成本。0 = 不限 ──
+  # 和 nginx 分工:nginx 每个 IP 每分钟 5 次(web/nginx.conf.template),防短时间狂刷;这里给每天的花费封顶。
+  # 计数在内存里,每天 0 点归零,重启也会清零
+  quota:
+    guest-daily: ${BAGUWEN_QUOTA_GUEST_DAILY:300}   # 所有游客合用这一个额度
+    user-daily: ${BAGUWEN_QUOTA_USER_DAILY:100}     # 每个登录用户各自这么多
 logging:
   file:
     name: ../logs/server.log
