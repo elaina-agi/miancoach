@@ -3,9 +3,6 @@ package com.autumn.rag.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -15,6 +12,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -98,38 +100,154 @@ public class OpenAiHttp {
         throw new LlmException("请求失败(已重试 " + attempts + " 次)");
     }
 
-    /** 流式 POST:解析 SSE,把 delta.content 增量回调出去。 */
-    public void streamSse(Endpoint ep, String path, Map<String, Object> body, Consumer<String> onDelta) {
+    /**
+     * 流式 POST:解析 SSE,把 delta.content 增量回调出去(在调用方线程上回调)。
+     * <p>
+     * firstTokenTimeoutSecs 秒内一个字都没出来就取消请求、抛 LlmException(上层据此切备用模型);
+     * 出字之后中途停住超过同样的秒数也中断。0 = 不限。
+     * 不能只靠 HttpRequest.timeout:它只管到响应头回来为止,之后模型卡住不出字会一直挂着。
+     * 所以读流交给 HttpClient 自己的线程往队列里塞,这里带超时地取。
+     * <p>
+     * 模型的问题(连不上、非 2xx、超时、一个字都没返回)都抛 LlmException;
+     * onDelta 自己抛的异常(如前端断开)原样往上抛——那不是模型的问题,上层不该因此切备用。
+     */
+    public void streamSse(Endpoint ep, String path, Map<String, Object> body, int firstTokenTimeoutSecs,
+                          Consumer<String> onDelta) {
+        SseLines lines = new SseLines();
+        CompletableFuture<HttpResponse<String>> future;
         try {
-            HttpResponse<InputStream> resp = http.send(ep.request(path, body, om),
-                    HttpResponse.BodyHandlers.ofInputStream());
-            if (resp.statusCode() / 100 != 2) {
-                throw new LlmException("HTTP " + resp.statusCode() + ": " + drain(resp.body(), 500));
-            }
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(resp.body(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (!line.startsWith("data:")) {
-                        continue;
-                    }
-                    String payload = line.substring(5).trim();
-                    if (payload.isEmpty()) {
-                        continue;
-                    }
-                    if (DONE.equals(payload)) {
-                        break;
-                    }
-                    JsonNode delta = om.readTree(payload).path("choices").path(0).path("delta").path("content");
-                    if (delta.isTextual() && !delta.asText().isEmpty()) {
-                        onDelta.accept(delta.asText());
-                    }
-                }
-            }
+            future = http.sendAsync(ep.request(path, body, om), lines::subscriber);
         } catch (LlmException e) {
             throw e;
+        } catch (RuntimeException e) {
+            throw new LlmException("流式请求失败: " + e.getMessage(), e); // 如 base-url 写错
+        }
+        future.whenComplete(lines::finished);
+        long timeout = firstTokenTimeoutSecs > 0 ? TimeUnit.SECONDS.toNanos(firstTokenTimeoutSecs) : 0;
+        long deadline = System.nanoTime() + timeout;
+        boolean started = false;
+        boolean finished = false;
+        try {
+            while (true) {
+                Object item = timeout > 0
+                        ? lines.queue.poll(deadline - System.nanoTime(), TimeUnit.NANOSECONDS)
+                        : lines.queue.take();
+                if (item == null) {
+                    throw new LlmException(started
+                            ? "模型输出中途停住超过 " + firstTokenTimeoutSecs + " 秒"
+                            : "模型 " + firstTokenTimeoutSecs + " 秒内没有开始输出");
+                }
+                if (item == SseLines.END) {
+                    break;
+                }
+                if (item instanceof LlmException e) {
+                    throw e;
+                }
+                if (item instanceof Throwable t) {
+                    throw new LlmException("流式请求失败: " + t.getMessage(), t);
+                }
+                String payload = ((String) item).startsWith("data:") ? ((String) item).substring(5).trim() : "";
+                if (payload.isEmpty()) {
+                    continue;
+                }
+                if (DONE.equals(payload)) {
+                    break;
+                }
+                String text = deltaContent(payload);
+                if (text == null) {
+                    continue;
+                }
+                started = true;
+                deadline = System.nanoTime() + timeout;
+                onDelta.accept(text);
+            }
+            finished = true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LlmException("调用被中断", e);
+        } finally {
+            if (!finished) {
+                // 超时、出错、调用方中途不要了:都把请求掐掉,别让连接一直挂在那
+                future.cancel(true);
+                lines.cancel();
+            }
+        }
+        if (!started) {
+            // 有的中转站上游出错时也回 200,只是一个字没有:当成失败,有备用时才能切过去
+            throw new LlmException("模型没有返回任何内容");
+        }
+    }
+
+    /** 一行 SSE data 的增量文本;没有文本(只有 role、推理过程等)返回 null。 */
+    private String deltaContent(String payload) {
+        JsonNode root;
+        try {
+            root = om.readTree(payload);
         } catch (Exception e) {
-            throw new LlmException("流式请求失败: " + e.getMessage(), e);
+            throw new LlmException("流式响应不是合法 JSON: " + snippet(payload), e);
+        }
+        // 有的服务在 200 的流里塞一条 {"error": ...}
+        if (root.has("error")) {
+            JsonNode err = root.path("error");
+            throw new LlmException("模型报错: " + snippet(err.path("message").asText(err.toString())));
+        }
+        JsonNode delta = root.path("choices").path(0).path("delta").path("content");
+        return delta.isTextual() && !delta.asText().isEmpty() ? delta.asText() : null;
+    }
+
+    /**
+     * 在 HttpClient 的线程上把响应体逐行塞进队列,由 streamSse 带超时地取。
+     * 队列里是:一行文本(String)、出错(Throwable)、或读完了(END)。
+     */
+    private static final class SseLines implements Flow.Subscriber<String> {
+
+        static final Object END = new Object();
+
+        final BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+        private volatile Flow.Subscription subscription;
+
+        /** 响应头到了:2xx 按行往队列里送;否则整段读成字符串,在 finished 里拼成报错 */
+        HttpResponse.BodySubscriber<String> subscriber(HttpResponse.ResponseInfo info) {
+            if (info.statusCode() / 100 != 2) {
+                return HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8);
+            }
+            return HttpResponse.BodySubscribers.fromLineSubscriber(this, s -> null, StandardCharsets.UTF_8, null);
+        }
+
+        void finished(HttpResponse<String> resp, Throwable err) {
+            if (err != null) {
+                queue.offer(err instanceof CompletionException && err.getCause() != null ? err.getCause() : err);
+            } else if (resp.statusCode() / 100 != 2) {
+                queue.offer(new LlmException("HTTP " + resp.statusCode() + ": " + snippet(resp.body())));
+            }
+        }
+
+        void cancel() {
+            Flow.Subscription s = subscription;
+            if (s != null) {
+                s.cancel();
+            }
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription s) {
+            subscription = s;
+            s.request(Long.MAX_VALUE);
+        }
+
+        @Override
+        public void onNext(String line) {
+            queue.offer(line);
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            queue.offer(t);
+        }
+
+        @Override
+        public void onComplete() {
+            queue.offer(END);
         }
     }
 
@@ -146,22 +264,5 @@ public class OpenAiHttp {
             return "";
         }
         return s.length() > 500 ? s.substring(0, 500) : s;
-    }
-
-    private static String drain(InputStream in, int max) {
-        try (var r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            StringBuilder sb = new StringBuilder();
-            char[] buf = new char[512];
-            int n;
-            while ((n = r.read(buf)) > 0) {
-                sb.append(buf, 0, n);
-                if (sb.length() >= max) {
-                    break;
-                }
-            }
-            return sb.toString();
-        } catch (Exception ignore) {
-            return "(读取错误响应失败)";
-        }
     }
 }

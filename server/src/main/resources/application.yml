@@ -56,6 +56,20 @@ app:
     # 只作用于 chat;embed/rerank 走国内端点保持直连。host 留空或端口 0 = 直连
     proxy-host: ${BAGUWEN_CHAT_PROXY_HOST:}
     proxy-port: ${BAGUWEN_CHAT_PROXY_PORT:0}
+    # 流式问答的首字超时:这么多秒内一个字都没出来就算失败——配了备用就切过去,没配就直接报错;
+    # 出字之后中途停住这么久也会中断。thinking 模型首字慢(实测 Gemini thinking 约 20 秒),别配太小。0 = 不限
+    first-token-timeout-secs: ${BAGUWEN_CHAT_FIRST_TOKEN_TIMEOUT_SECS:40}
+    # ── 备用模型(可选):主模型连不上 / 超时 / 限流 / 5xx / key 失效时切过去,见 FallbackChat。
+    # 不填 api-key = 没有备用,和以前一样。建议换一家厂商:同一家出故障时往往一起挂
+    backup:
+      base-url: ${BAGUWEN_CHAT_BACKUP_BASE_URL:https://api.deepseek.com}
+      api-key: ${BAGUWEN_CHAT_BACKUP_API_KEY:}
+      model: ${BAGUWEN_CHAT_BACKUP_MODEL:deepseek-flash}
+      proxy-host: ${BAGUWEN_CHAT_BACKUP_PROXY_HOST:}   # 和主模型的代理各配各的,默认直连
+      proxy-port: ${BAGUWEN_CHAT_BACKUP_PROXY_PORT:0}
+      # 熔断:主模型连续失败 3 次后,60 秒内直接走备用,不再每次先白等主模型失败;到点再试主模型,好了就切回去
+      breaker-failures: 3
+      breaker-open-secs: 60
 
   # ── 向量端:索引与查询。换模型/维度后**必须重新索引**(见 GET /api/meta 的 index 字段)。
   embed:

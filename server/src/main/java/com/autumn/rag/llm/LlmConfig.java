@@ -2,22 +2,35 @@ package com.autumn.rag.llm;
 
 import com.autumn.rag.config.AppProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Duration;
 import java.util.List;
 
-/** 装配三个独立提供者:生成端、向量端、重排端各管各的 base-url / key / model。 */
+/** 装配三个独立提供者:生成端、向量端、重排端各管各的 base-url / key / model。生成端可另配备用模型。 */
 @Configuration
 public class LlmConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(LlmConfig.class);
 
     @Bean
     public ChatProvider chatProvider(AppProperties props, ObjectMapper om) {
         AppProperties.Chat c = props.chat();
-        if (useReal(c.provider(), c.apiKey(), "app.chat")) {
-            return new OpenAiCompatChat(c, om);
+        if (!useReal(c.provider(), c.apiKey(), "app.chat")) {
+            return new MockChat();
         }
-        return new MockChat();
+        AppProperties.Chat.Backup b = c.backup();
+        if (b == null || b.apiKey() == null || b.apiKey().isBlank()) {
+            return new OpenAiCompatChat(c, om, 3);
+        }
+        // 有备用时主模型不再自己重试:失败一次就切,重试那几秒留给备用
+        FallbackChat chat = new FallbackChat(new OpenAiCompatChat(c, om, 1), new OpenAiCompatChat(c.asBackup(), om, 3),
+                b.breakerFailures(), Duration.ofSeconds(b.breakerOpenSecs()));
+        log.info("生成端为 {},主模型失败时切到备用", chat.name());
+        return chat;
     }
 
     @Bean

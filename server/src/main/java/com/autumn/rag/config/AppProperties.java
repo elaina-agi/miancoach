@@ -31,7 +31,29 @@ public record AppProperties(
             // 代理(可选):base-url 指向需代理的端点时配置(如 Google Gemini 官方 API 经本机代理)。
             // 只作用于 chat —— embed/rerank 走国内端点,保持直连。host 留空或端口 0 = 直连。
             String proxyHost,
-            int proxyPort) {}
+            int proxyPort,
+            // 流式问答的首字超时(秒):这么久一个字都没出来就算失败,有备用就切过去;出字后中途停住这么久也中断。0 = 不限
+            int firstTokenTimeoutSecs,
+            Backup backup) {
+
+        /** 备用模型(可选,不配 apiKey = 没有备用)。主模型失败时切过去,见 FallbackChat。 */
+        public record Backup(
+                String baseUrl,
+                String apiKey,
+                String model,
+                // 代理和主模型各配各的:备用常是国内厂商,直连
+                String proxyHost,
+                int proxyPort,
+                int breakerFailures,      // 主模型连续失败这么多次就熔断,0 = 不熔断
+                int breakerOpenSecs) {}   // 熔断多久:这段时间直接走备用,到点再试主模型
+
+        /** 备用模型沿用主模型的超时设置,只换地址、key、模型和代理。 */
+        public Chat asBackup() {
+            return new Chat("openai", backup.baseUrl(), backup.apiKey(), backup.model(),
+                    requestTimeoutSecs, connectTimeoutSecs, backup.proxyHost(), backup.proxyPort(),
+                    firstTokenTimeoutSecs, null);
+        }
+    }
 
     /** 向量端:索引与查询。dims 必须与 embedding 列维度一致。 */
     public record Embed(

@@ -1,13 +1,10 @@
 package com.autumn.rag.service;
 
+import com.autumn.rag.TestClock;
 import com.autumn.rag.common.TooManyRequestsException;
 import org.junit.jupiter.api.Test;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -15,30 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /** 每日额度:游客合用一个、登录用户各算各的、跨天归零、0 = 不限。 */
 class QuotaServiceTest {
-
-    /** 能往前拨的时钟,测跨天归零 */
-    private static final class TestClock extends Clock {
-        private Instant now = Instant.parse("2026-10-29T10:00:00Z");
-
-        void plus(Duration d) {
-            now = now.plus(d);
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return now;
-        }
-    }
 
     private final TestClock clock = new TestClock();
 
