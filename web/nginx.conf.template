@@ -1,3 +1,14 @@
+# ── 限流 ──
+# 调大模型的接口(问答 / 批改 / 总结)每个 IP 每分钟 5 次。和后端的每日额度(application.yml 的 app.quota)分工:
+# 这里防短时间狂刷,后端给每天的花费封顶。
+# rate=5r/m 的意思是"平均 12 秒放行 1 次",只写它的话连发两问第二问就会被拒;
+# 下面配上 burst=4 nodelay,才是"可以先连发 5 次,之后每 12 秒恢复 1 次"。
+# key 是连上来的 IP:如果前面再套一层代理(Cloudflare、宿主机上做 HTTPS 的 nginx/Caddy),
+# 这里看到的全是那层代理的 IP,所有人会共用这 5 次——那时要配 set_real_ip_from + real_ip_header 还原真实 IP
+limit_req_zone $binary_remote_addr zone=llm:10m rate=5r/m;
+# 发注册验证码:每个 IP 先连发 3 次,之后每分钟 1 次。后端已有"同一邮箱 60 秒冷却",这里防换着邮箱刷
+limit_req_zone $binary_remote_addr zone=code:10m rate=1r/m;
+
 server {
     listen 80;
     server_name _;
@@ -11,25 +22,49 @@ server {
     resolver 127.0.0.11 valid=10s ipv6=off;
     set $backend "http://${BACKEND_ADDR}";
 
+    # 反代参数写在 server 级,下面几个 /api 的 location 都继承,各自只写 proxy_pass。
+    # 注意 proxy_set_header 的继承规则:某个 location 里只要自己写了一条,这里的就全部不继承了
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # 问答是 SSE 流式:不关缓冲的话 nginx 攒满一块才往下吐,前端看不到逐字输出
+    proxy_buffering off;
+    proxy_cache off;
+    # 批改是非流式 LLM 调用(后端超时 120s),默认 60s 会先断
+    proxy_read_timeout 300s;
+
+    # 被限流时回 JSON,和后端的错误格式一样({"error": ...}),前端直接把这句显示出来。
+    # 只接管 nginx 自己发出的 429;后端的 429(每日额度用完)原样透传,提示语不会被盖掉
+    limit_req_status 429;
+    error_page 429 = @limited;
+    location @limited {
+        default_type application/json;
+        return 429 '{"error":"请求太频繁,请稍后再试"}';
+    }
+
     # 管理接口(重灌索引 / 构建评测集)没有鉴权,且会烧 LLM 额度,不对公网开放;
     # 需要时在宿主机上直接打后端:curl -X POST http://127.0.0.1:8080/api/admin/reindex
-    location /api/admin/ {
+    # ^~:匹配上就不再看下面的正则 location,保证这条总是生效
+    location ^~ /api/admin/ {
         return 403;
+    }
+
+    # 调大模型的接口:/api/chat/ask、/api/quiz/grade|report、/api/quiz/session/{id}/grade|report
+    location ~ ^/api/(chat/ask|quiz/(session/[^/]+/)?(grade|report))$ {
+        limit_req zone=llm burst=4 nodelay;
+        proxy_pass $backend;
+    }
+
+    location = /api/auth/code {
+        limit_req zone=code burst=2 nodelay;
+        proxy_pass $backend;
     }
 
     location /api/ {
         proxy_pass $backend;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # 问答是 SSE 流式:不关缓冲的话 nginx 攒满一块才往下吐,前端看不到逐字输出
-        proxy_buffering off;
-        proxy_cache off;
-        # 批改是非流式 LLM 调用(后端超时 120s),默认 60s 会先断
-        proxy_read_timeout 300s;
     }
 
     # Vite 产物文件名带内容哈希,可以长缓存

@@ -68,7 +68,7 @@
                 <div v-if="m.error" class="callout bad">
                   <CircleAlert :size="16" />
                   <div>
-                    <strong>回答中断了</strong>
+                    <strong>{{ m.limited ? '暂时不能提问' : '回答中断了' }}</strong>
                     <p>{{ m.error }}</p>
                   </div>
                   <button class="btn btn-secondary btn-sm" :disabled="streaming" @click="retry(i)"><RotateCcw :size="14" />重试</button>
@@ -153,6 +153,8 @@ interface Msg {
   streaming?: boolean
   noAnswer?: boolean
   error?: string
+  /** 被限流(429):不是回答中途断了,标题换一句 */
+  limited?: boolean
 }
 
 const route = useRoute()
@@ -426,10 +428,11 @@ async function send(text?: string) {
         void refreshSessions() // 标题/活跃时间都变了,刷新侧栏
       })
     },
-    onError: (e) => {
+    onError: (e, status) => {
       appender?.flushNow() // 出错就别慢慢画了,剩余一次性吐完
       msg.streaming = false
       msg.error = e
+      msg.limited = status === 429
       streaming.value = false
       void refreshSessions() // 提问已经落库了(后端在流开始前就存),列表上有它
     },

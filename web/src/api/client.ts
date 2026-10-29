@@ -100,7 +100,8 @@ export interface StreamHandlers {
   onRefs?: (refs: AskRef[]) => void
   onDelta?: (text: string) => void
   onDone?: (info?: { noAnswer?: boolean }) => void
-  onError?: (msg: string) => void
+  /** status:HTTP 层就被拒时带上(如 429 限流);流开始后才出的错没有 */
+  onError?: (msg: string, status?: number) => void
 }
 
 /** 多轮追问的一轮历史(后端据此把"它/那个"改写成独立问题再检索)。 */
@@ -134,7 +135,7 @@ export function askStream(question: string, h: StreamHandlers, history?: History
         try { const b = await resp.json(); if (b.error) msg = b.error } catch { /* ignore */ }
         // 和 json() 同一条规则:带着 token 被 401 = 登录态失效,清掉后界面回到游客
         if (resp.status === 401 && token.value) clearSession()
-        h.onError?.(msg)
+        h.onError?.(msg, resp.status)
         return
       }
       const reader = resp.body?.getReader()
