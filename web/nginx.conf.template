@@ -3,11 +3,46 @@
 # 这里防短时间狂刷,后端给每天的花费封顶。
 # rate=5r/m 的意思是"平均 12 秒放行 1 次",只写它的话连发两问第二问就会被拒;
 # 下面配上 burst=4 nodelay,才是"可以先连发 5 次,之后每 12 秒恢复 1 次"。
-# key 是连上来的 IP:如果前面再套一层代理(Cloudflare、宿主机上做 HTTPS 的 nginx/Caddy),
-# 这里看到的全是那层代理的 IP,所有人会共用这 5 次——那时要配 set_real_ip_from + real_ip_header 还原真实 IP
+# key 是用户的真实 IP,由下面的「还原真实 IP」得到
 limit_req_zone $binary_remote_addr zone=llm:10m rate=5r/m;
 # 发注册验证码:每个 IP 先连发 3 次,之后每分钟 1 次。后端已有"同一邮箱 60 秒冷却",这里防换着邮箱刷
 limit_req_zone $binary_remote_addr zone=code:10m rate=1r/m;
+
+# ── 还原真实 IP ──
+# 线上链路是 用户 → Cloudflare → 宿主机反代(1Panel openresty)→ 本容器,这里直接看到的全是 docker 网关
+# (172.27.0.1),不还原的话所有人共用上面的限流额度。
+# 做法:信任内网网段和 Cloudflare 的 IP 段,从 X-Forwarded-For 最右边往左跳过这些可信代理,第一个不可信的就是真实 IP。
+# 有人绕过 Cloudflare 直连源站也伪造不了:宿主机反代会把连上来的真实 IP 追加在最右边,左边写什么都会被跳过。
+# 前面没有代理、直接对外时,连上来的 IP 不在可信范围内,这段不起作用
+set_real_ip_from 127.0.0.1;
+set_real_ip_from 10.0.0.0/8;
+set_real_ip_from 172.16.0.0/12;    # docker 网络,宿主机反代从网关进来
+set_real_ip_from 192.168.0.0/16;
+# Cloudflare 的 IP 段,来自 https://www.cloudflare.com/ips-v4 和 ips-v6(很少变,变了照着更新)
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 131.0.72.0/22;
+set_real_ip_from 2400:cb00::/32;
+set_real_ip_from 2606:4700::/32;
+set_real_ip_from 2803:f800::/32;
+set_real_ip_from 2405:b500::/32;
+set_real_ip_from 2405:8100::/32;
+set_real_ip_from 2a06:98c0::/29;
+set_real_ip_from 2c0f:f248::/32;
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
 
 server {
     listen 80;
