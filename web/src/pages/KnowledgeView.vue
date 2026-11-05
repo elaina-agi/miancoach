@@ -50,6 +50,7 @@
               </RouterLink>
             </template>
           </section>
+          <SourceCredit v-if="docs.length" class="list-credit" />
         </template>
       </div>
     </aside>
@@ -61,6 +62,7 @@
         <h2>挑一道题开始读</h2>
         <p>左边按板块浏览，或者搜关键词。<br>读的时候用 <span class="kbd">←</span> <span class="kbd">→</span> 翻上一题、下一题。</p>
         <button class="btn btn-secondary" :disabled="!all.length" @click="randomPick"><Shuffle :size="15" />随机来一题</button>
+        <SourceCredit class="empty-credit" />
       </div>
 
       <article v-else class="paper">
@@ -77,11 +79,14 @@
           </RouterLink>
           <RouterLink to="/quiz" class="btn btn-ghost btn-sm"><NotebookPen :size="14" />去模拟面试</RouterLink>
           <a v-if="detail?.url" :href="detail.url" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm">
-            原站文章<ExternalLink :size="13" />
+            {{ sourceName(detail.url) ?? '原站' }} 原文<ExternalLink :size="13" />
           </a>
         </div>
 
-        <MarkdownView v-if="detail" :content="detail.content" class="body" />
+        <template v-if="detail">
+          <MarkdownView :content="detail.content" class="body" />
+          <SourceCredit v-if="detail.url" :url="detail.url" :title="detail.title" class="origin" />
+        </template>
         <div v-else-if="detailFailed" class="body fail">这道题加载失败。<button class="link" @click="loadDetail">重试</button></div>
         <div v-else class="body skel">
           <div class="skeleton" style="width: 94%" /><div class="skeleton" style="width: 100%" /><div class="skeleton" style="width: 72%" />
@@ -109,9 +114,11 @@ import {
   ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessageSquare, NotebookPen, Search, Shuffle, X,
 } from 'lucide-vue-next'
 import MarkdownView from '../components/MarkdownView.vue'
+import SourceCredit from '../components/SourceCredit.vue'
 import { corpusApi } from '../api/client'
 import type { ChunkFull } from '../api/types'
 import { flatten, groupLabel, loadTree, tree, treeFailed, type FlatQuestion } from '../lib/catalog'
+import { sourceName } from '../lib/site'
 
 const route = useRoute()
 const router = useRouter()
@@ -305,6 +312,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .title { margin-top: 10px; font-size: 26px; line-height: 1.45; letter-spacing: -0.015em; text-wrap: balance; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0 -2px; }
 .body { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--line); }
+.origin { margin-top: 28px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.list-credit { margin: 20px 8px 0; }
+.empty-credit { margin-top: 18px; }
 .skel { display: flex; flex-direction: column; gap: 12px; }
 .skel .skeleton { height: 15px; }
 .fail { color: var(--ink-2); }

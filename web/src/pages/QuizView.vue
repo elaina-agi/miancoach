@@ -6,6 +6,7 @@
         <header class="intro">
           <h1>模拟面试</h1>
           <p>系统随机抽题，你像面试时那样作答；AI 考官对照题库原文逐点批改，漏掉的点就是该补的。</p>
+          <SourceCredit class="intro-credit" />
         </header>
 
         <section class="setup">
@@ -104,7 +105,10 @@
           </details>
           <details class="fold" open>
             <summary><ChevronRight :size="16" class="chev" />标准答案<span class="fold-sub">题库原文</span></summary>
-            <MarkdownView v-if="std" :content="std.content" class="std" />
+            <template v-if="std">
+              <MarkdownView :content="std.content" class="std" />
+              <SourceCredit v-if="std.url" :url="std.url" :title="std.title" class="std-credit" />
+            </template>
             <div v-else class="std-skel"><div class="skeleton" /><div class="skeleton" style="width: 80%" /></div>
           </details>
         </template>
@@ -163,6 +167,7 @@ import {
   ArrowRight, ChartNoAxesColumn, Check, ChevronRight, Flag, Info, LoaderCircle, LogIn, RotateCcw, Shuffle, Sparkles,
 } from 'lucide-vue-next'
 import MarkdownView from '../components/MarkdownView.vue'
+import SourceCredit from '../components/SourceCredit.vue'
 import GradeResult from '../components/quiz/GradeResult.vue'
 import ScoreMeter from '../components/quiz/ScoreMeter.vue'
 import ScoreBadge from '../components/quiz/ScoreBadge.vue'
@@ -463,6 +468,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKey))
 .fold-sub { font-size: 12.5px; font-weight: 400; color: var(--ink-3); margin-left: 4px; }
 .my-answer { padding: 0 0 16px 22px; white-space: pre-wrap; font-size: 14.5px; line-height: 1.8; color: var(--ink-2); }
 .std { padding: 0 0 20px 22px; }
+.std-credit { padding: 0 0 20px 22px; }
+.intro-credit { margin-top: 6px; }
 .std-skel { padding: 0 0 20px 22px; display: flex; flex-direction: column; gap: 10px; }
 .std-skel .skeleton { height: 14px; }
 
@@ -497,6 +504,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKey))
   .answer { min-height: 200px; font-size: 16px; }
   .answer-foot .hint, .next-row .hint, .start-row .hint { display: none; }
   .answer-foot .btn { flex: 1; }
-  .my-answer, .std, .std-skel { padding-left: 0; }
+  .my-answer, .std, .std-skel, .std-credit { padding-left: 0; }
 }
 </style>

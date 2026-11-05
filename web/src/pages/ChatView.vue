@@ -43,6 +43,7 @@
               </button>
             </div>
           </div>
+          <SourceCredit class="hero-credit" />
         </div>
       </div>
 
@@ -107,7 +108,10 @@
               </button>
             </Transition>
             <Composer ref="composerEl" v-model="input" :streaming="streaming" @send="send()" @stop="stop" />
-            <p class="disclaimer">Enter 发送，Shift + Enter 换行 · AI 回答可能有偏差，重要结论请点来源核对原文</p>
+            <p class="disclaimer">
+              Enter 发送，Shift + Enter 换行 · AI 回答可能有偏差，重要结论请点来源核对原文 ·
+              题库来自<a :href="CORPUS_SOURCES[0].url" target="_blank" rel="noopener noreferrer">{{ CORPUS_AUTHOR }}</a>
+            </p>
           </div>
         </div>
       </template>
@@ -137,12 +141,14 @@ import Sheet from '../components/ui/Sheet.vue'
 import Composer from '../components/chat/Composer.vue'
 import ChatHistory from '../components/chat/ChatHistory.vue'
 import SourcePanel from '../components/chat/SourcePanel.vue'
+import SourceCredit from '../components/SourceCredit.vue'
 import { authReady, isLoggedIn, openLogin, watchUser } from '../lib/auth'
 import { flatten, groupLabel, loadMeta, loadTree, meta, tree, type FlatQuestion } from '../lib/catalog'
 import { confirm } from '../lib/confirm'
 import { useMediaQuery } from '../lib/responsive'
 import { createSmoothAppender, type SmoothAppender } from '../lib/smoothStream'
 import { toast } from '../lib/toast'
+import { CORPUS_AUTHOR, CORPUS_SOURCES } from '../lib/site'
 import { useOverlay } from '../lib/overlay'
 import { token } from '../lib/session'
 
@@ -521,6 +527,7 @@ onBeforeUnmount(() => {
 .hero-loading { margin: auto; display: flex; align-items: center; gap: 10px; color: var(--ink-3); }
 
 .suggest { width: 100%; margin-top: 28px; }
+.hero-credit { margin-top: 24px; text-align: center; }
 .suggest-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; color: var(--ink-3); }
 .suggest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .suggest-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; text-align: left; border: 1px solid var(--line); border-radius: var(--r-lg); background: transparent; cursor: pointer; transition: background var(--t) var(--ease), border-color var(--t) var(--ease); }
@@ -563,6 +570,8 @@ onBeforeUnmount(() => {
 .dock { flex: none; padding: 0 28px 14px; }
 .dock-inner { position: relative; max-width: 768px; margin: 0 auto; }
 .disclaimer { margin-top: 8px; text-align: center; font-size: 12px; color: var(--ink-3); }
+.disclaimer a { margin-left: 2px; color: var(--ink-2); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.disclaimer a:hover { color: var(--accent); }
 .to-bottom { position: absolute; top: -48px; left: 50%; transform: translateX(-50%); width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--ink-2); box-shadow: var(--shadow-pop); cursor: pointer; }
 .to-bottom:hover { color: var(--ink); }
 .fade-enter-active, .fade-leave-active { transition: opacity 160ms var(--ease); }

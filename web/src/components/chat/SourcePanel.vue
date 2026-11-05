@@ -19,7 +19,11 @@
       <h2 class="src-q">{{ current.question }}</h2>
       <p class="src-doc">{{ current.title }}</p>
 
-      <MarkdownView v-if="detail" :content="detail.content" class="src-md" />
+      <!-- 正文和出处包在同一个 v-if 里:出处单独 v-if 会截断下面的 v-else-if/v-else 链,没有 url 时骨架屏会和正文一起出现 -->
+      <template v-if="detail">
+        <MarkdownView :content="detail.content" class="src-md" />
+        <SourceCredit v-if="current.url" :url="current.url" :title="current.title" class="src-credit" />
+      </template>
       <div v-else-if="failed" class="src-fail">原文加载失败。<button class="link" @click="load">重试</button></div>
       <div v-else class="src-skel">
         <div class="skeleton" style="width: 92%" /><div class="skeleton" style="width: 100%" />
@@ -32,7 +36,7 @@
         <BookOpen :size="14" />在知识库中阅读
       </RouterLink>
       <a v-if="current.url" :href="current.url" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm">
-        原站文章<ExternalLink :size="13" />
+        {{ sourceName(current.url) ?? '原站' }} 原文<ExternalLink :size="13" />
       </a>
     </footer>
   </div>
@@ -42,9 +46,11 @@
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { BookOpen, ExternalLink, X } from 'lucide-vue-next'
 import MarkdownView from '../MarkdownView.vue'
+import SourceCredit from '../SourceCredit.vue'
 import { corpusApi } from '../../api/client'
 import type { AskRef, ChunkFull } from '../../api/types'
 import { groupLabel } from '../../lib/catalog'
+import { sourceName } from '../../lib/site'
 
 const props = defineProps<{ refs: AskRef[] }>()
 const emit = defineEmits<{ close: [] }>()
@@ -93,6 +99,7 @@ watch(() => current.value?.chunkId, () => {
 .src-q { margin-top: 12px; font-size: 19px; line-height: 1.5; }
 .src-doc { margin-top: 4px; font-size: 13px; color: var(--ink-3); }
 .src-md { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14.5px; }
+.src-credit { margin-top: 20px; padding-top: 12px; border-top: 1px dashed var(--line); }
 .src-skel { margin-top: 24px; display: flex; flex-direction: column; gap: 12px; }
 .src-skel .skeleton { height: 14px; }
 .src-fail { margin-top: 24px; color: var(--ink-2); font-size: 14px; }
