@@ -16,6 +16,7 @@ const routes = [
       { path: 'kb/:id(\\d+)?', name: 'kb', component: () => import('../pages/KnowledgeView.vue'), meta: { title: '知识库' } },
       { path: 'quiz', name: 'quiz', component: () => import('../pages/QuizView.vue'), meta: { title: '模拟面试' } },
       { path: 'records', name: 'records', component: () => import('../pages/RecordsView.vue'), meta: { title: '复盘' } },
+      { path: 'about', name: 'about', component: () => import('../pages/AboutView.vue'), meta: { title: '关于' } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/chat' },

@@ -42,6 +42,12 @@
           </div>
         </Popover>
 
+        <!-- 关于不占主导航的位置(手机底栏只放得下四个),放在右上角,手机上也看得到 -->
+        <RouterLink to="/about" class="btn btn-ghost btn-icon about-btn" :class="{ on: isActive('/about') }"
+                    title="关于本站 · 题库来源" aria-label="关于本站">
+          <Info :size="17" />
+        </RouterLink>
+
         <button class="btn btn-ghost btn-icon" :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
           <Sun v-if="theme === 'dark'" :size="17" />
           <Moon v-else :size="17" />
@@ -91,7 +97,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { BookOpen, ChartNoAxesColumn, LogOut, MessageSquare, Moon, NotebookPen, Sun } from 'lucide-vue-next'
+import { BookOpen, ChartNoAxesColumn, Info, LogOut, MessageSquare, Moon, NotebookPen, Sun } from 'lucide-vue-next'
 import BrandMark from './BrandMark.vue'
 import AuthDialog from './AuthDialog.vue'
 import Popover from './ui/Popover.vue'
@@ -156,6 +162,7 @@ onMounted(() => { void loadMeta() })
 .nav-item.on svg { color: var(--accent); }
 
 .bar-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.about-btn.on { background: var(--fill); color: var(--accent); }
 
 .status-btn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--ink-2); transition: background var(--t) var(--ease); }
 .status-btn:hover { background: var(--fill); }
