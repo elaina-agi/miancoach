@@ -2,6 +2,7 @@ package com.autumn.rag.web;
 
 import com.autumn.rag.common.AuthException;
 import com.autumn.rag.dao.UserDao;
+import com.autumn.rag.service.AuthService;
 import com.autumn.rag.service.JwtService;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
@@ -51,8 +52,11 @@ public class CurrentUserResolver implements HandlerMethodArgumentResolver {
         return user;
     }
 
-    /** 没带 token:游客,返回 null。带了但签名不对、过期、用户已删:401。 */
-    LoginUser resolve(String authorization) {
+    /**
+     * 没带 token:游客,返回 null。带了但签名不对、过期、用户已删、账号被禁用:401。
+     * 禁用也走 401:前端据此清掉登录态,被禁用的人当场就退出了,不用等 token 过期。
+     */
+    public LoginUser resolve(String authorization) {
         if (authorization == null || authorization.isBlank()) {
             return null;
         }
@@ -61,8 +65,11 @@ public class CurrentUserResolver implements HandlerMethodArgumentResolver {
         }
         UUID id = jwt.parse(authorization.substring(BEARER.length()).trim())
                 .orElseThrow(() -> new AuthException("登录已失效,请重新登录"));
-        return users.findById(id)
-                .map(u -> new LoginUser(u.id(), u.role()))
+        UserDao.UserRow u = users.findById(id)
                 .orElseThrow(() -> new AuthException("登录已失效,请重新登录"));
+        if (u.disabledAt() != null) {
+            throw new AuthException(AuthService.DISABLED_MSG);
+        }
+        return new LoginUser(u.id(), u.role());
     }
 }

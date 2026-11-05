@@ -54,10 +54,19 @@ class CurrentUserResolverTest {
     }
 
     @Test
+    void 账号被禁用_已登录的token也立即失效() {
+        when(jwt.parse("ok")).thenReturn(Optional.of(id));
+        when(users.findById(id)).thenReturn(Optional.of(
+                new UserRow(id, "a@b.com", "hash", null, "USER", Instant.now(), Instant.now())));
+
+        assertThrows(AuthException.class, () -> resolver.resolve("Bearer ok"));
+    }
+
+    @Test
     void 有效token解析出用户_前缀不区分大小写() {
         when(jwt.parse("ok")).thenReturn(Optional.of(id));
         when(users.findById(id)).thenReturn(Optional.of(
-                new UserRow(id, "a@b.com", "hash", null, "USER", Instant.now())));
+                new UserRow(id, "a@b.com", "hash", null, "USER", Instant.now(), null)));
 
         LoginUser u = resolver.resolve("bearer ok");
 

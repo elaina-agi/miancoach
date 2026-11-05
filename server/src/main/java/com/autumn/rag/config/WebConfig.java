@@ -1,10 +1,12 @@
 package com.autumn.rag.config;
 
+import com.autumn.rag.web.AdminInterceptor;
 import com.autumn.rag.web.CurrentUserResolver;
 import com.autumn.rag.web.LoginUser;
 import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.List;
@@ -18,13 +20,20 @@ public class WebConfig implements WebMvcConfigurer {
     }
 
     private final CurrentUserResolver currentUserResolver;
+    private final AdminInterceptor adminInterceptor;
 
-    public WebConfig(CurrentUserResolver currentUserResolver) {
+    public WebConfig(CurrentUserResolver currentUserResolver, AdminInterceptor adminInterceptor) {
         this.currentUserResolver = currentUserResolver;
+        this.adminInterceptor = adminInterceptor;
     }
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(currentUserResolver);
+    }
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(adminInterceptor).addPathPatterns("/api/admin/**");
     }
 }

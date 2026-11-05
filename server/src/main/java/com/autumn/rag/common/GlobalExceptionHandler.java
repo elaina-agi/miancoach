@@ -31,6 +31,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
     }
 
+    /** 登录了但没权限。和 401 分开:403 时前端不能清登录态,用户确实是登录着的。 */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, String>> forbidden(ForbiddenException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<Map<String, String>> conflict(ConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+    }
+
     /** 验证码冷却 / 限流。前端收到 429 显示倒计时,而不是当成普通错误。 */
     @ExceptionHandler(TooManyRequestsException.class)
     public ResponseEntity<Map<String, String>> tooMany(TooManyRequestsException e) {

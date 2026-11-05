@@ -115,7 +115,7 @@ class AuthServiceTest {
         when(codeDao.consume(1L)).thenReturn(true);
         when(userDao.insert(eq(EMAIL), anyString(), eq("小明"))).thenReturn(id);
         when(userDao.findById(id)).thenReturn(Optional.of(
-                new UserRow(id, EMAIL, "hash", "小明", "USER", Instant.now())));
+                new UserRow(id, EMAIL, "hash", "小明", "USER", Instant.now(), null)));
 
         AuthService.LoginOut out = auth.register(EMAIL, CODE, "password123", " 小明 ");
 
@@ -211,7 +211,7 @@ class AuthServiceTest {
         UUID id = UUID.randomUUID();
         String hash = new BCryptPasswordEncoder().encode("password123");
         when(userDao.findByEmail(EMAIL)).thenReturn(Optional.of(
-                new UserRow(id, EMAIL, hash, null, "USER", Instant.now())));
+                new UserRow(id, EMAIL, hash, null, "USER", Instant.now(), null)));
 
         assertEquals(Optional.of(id), jwt.parse(auth.login("FOO@x.com", "password123").token()));
         assertThrows(AuthException.class, () -> auth.login(EMAIL, "wrong-password"));
@@ -219,5 +219,21 @@ class AuthServiceTest {
         when(userDao.findByEmail("nobody@x.com")).thenReturn(Optional.empty());
         AuthException e = assertThrows(AuthException.class, () -> auth.login("nobody@x.com", "password123"));
         assertEquals("邮箱或密码错误", e.getMessage()); // 与密码错误同一句提示
+    }
+
+    /** 被禁用:密码对了才提示"已禁用"(密码错还是那句"邮箱或密码错误"),且不记登录时间。 */
+    @Test
+    void login_disabledAccount() {
+        UUID id = UUID.randomUUID();
+        String hash = new BCryptPasswordEncoder().encode("password123");
+        when(userDao.findByEmail(EMAIL)).thenReturn(Optional.of(
+                new UserRow(id, EMAIL, hash, null, "USER", Instant.now(), Instant.now())));
+
+        AuthException wrongPw = assertThrows(AuthException.class, () -> auth.login(EMAIL, "wrong-password"));
+        assertEquals("邮箱或密码错误", wrongPw.getMessage());
+
+        AuthException e = assertThrows(AuthException.class, () -> auth.login(EMAIL, "password123"));
+        assertEquals(AuthService.DISABLED_MSG, e.getMessage());
+        verify(userDao, never()).touchLogin(any());
     }
 }

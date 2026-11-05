@@ -97,18 +97,68 @@ GET http://localhost:8080/api/quiz/weakness
 ### 3e. 场次 AI 总结(把 id 换成真实 sessionId)
 GET http://localhost:8080/api/quiz/session/替换成真实sessionId/report
 
+### ──────────────── 管理员登录 ────────────────
+# /api/admin/** 只给管理员:游客 401、普通用户 403。
+# 先在库里把自己设成管理员(见 README「管理员」),再跑下面的登录,把返回的 token 填到 @adminToken
+@adminToken = 替换成登录返回的token
+
+### 登录拿 token
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{"email": "替换成管理员邮箱", "password": "替换成密码"}
+
 ### ──────────────── 评测(去自环) ────────────────
 
 ### 4. 旧自环评测(链路回归用)
 GET http://localhost:8080/api/admin/eval?n=20
+Authorization: Bearer {{adminToken}}
 
 ### 4b. golden 评测(真实 recall/MRR/拒答率,慢一点)
 GET http://localhost:8080/api/admin/eval?mode=golden&n=50&topN=5
+Authorization: Bearer {{adminToken}}
 
 ### ──────────────── 管理(慎用) ────────────────
 
-### 5. 全量重灌索引(语料 md → 分块 → 向量 → pgvector,574 题+1155 子段)
+### 5. 开始全量重建索引(后台执行,立刻返回 202;已经在跑时 409)
 POST http://localhost:8080/api/admin/reindex
+Authorization: Bearer {{adminToken}}
+
+### 5a. 重建进度 / 结果(state:IDLE / RUNNING / SUCCEEDED / FAILED)
+GET http://localhost:8080/api/admin/reindex
+Authorization: Bearer {{adminToken}}
 
 ### 5b. 重建 golden 评测集(会批量调 LLM,约 15 分钟)
 POST http://localhost:8080/api/admin/eval/build?rewriteLimit=0&probeCount=40
+Authorization: Bearer {{adminToken}}
+
+### ──────────────── 用户管理 ────────────────
+
+### 6. 用户列表(q 按邮箱 / 昵称搜,page 从 1 开始)
+GET http://localhost:8080/api/admin/users?q=&page=1&size=20
+Authorization: Bearer {{adminToken}}
+
+### 6b. 禁用 / 解禁(不能禁用自己)
+PUT http://localhost:8080/api/admin/users/替换成用户id/disabled
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"disabled": true}
+
+### 6c. 改角色 USER / ADMIN(不能取消自己的管理员)
+PUT http://localhost:8080/api/admin/users/替换成用户id/role
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"role": "USER"}
+
+### 6d. 改昵称(传空串 = 清空)
+PUT http://localhost:8080/api/admin/users/替换成用户id/nickname
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"nickname": ""}
+
+### 6e. 删除用户(问答、面试记录一并删除;不能删除自己)
+DELETE http://localhost:8080/api/admin/users/替换成用户id
+Authorization: Bearer {{adminToken}}

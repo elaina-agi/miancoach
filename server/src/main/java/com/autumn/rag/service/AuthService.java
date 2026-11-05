@@ -38,6 +38,9 @@ public class AuthService {
     static final int PASSWORD_MAX_BYTES = 72;
     static final int PASSWORD_MIN_CHARS = 8;
 
+    /** 登录时、以及已登录用户每次请求时(CurrentUserResolver)共用这句提示 */
+    public static final String DISABLED_MSG = "账号已被禁用,如有疑问请联系管理员";
+
     public record UserView(UUID id, String email, String nickname, String role) {
         static UserView of(UserRow u) {
             return new UserView(u.id(), u.email(), u.nickname(), u.role());
@@ -127,6 +130,7 @@ public class AuthService {
             // 能走到这里,只可能是同一邮箱的两个注册请求并发,另一个先插入成功
             throw new IllegalArgumentException("该邮箱已注册,请直接登录");
         }
+        userDao.touchLogin(id); // 注册即登录
         UserRow u = userDao.findById(id).orElseThrow();
         return new LoginOut(jwt.issue(id), UserView.of(u));
     }
@@ -143,6 +147,11 @@ public class AuthService {
         if (u == null || !ok) {
             throw new AuthException("邮箱或密码错误");
         }
+        // 密码对了才告诉他被禁用:否则不知道密码的人也能借这句提示探出某个邮箱注册过
+        if (u.disabledAt() != null) {
+            throw new AuthException(DISABLED_MSG);
+        }
+        userDao.touchLogin(u.id());
         return new LoginOut(jwt.issue(u.id()), UserView.of(u));
     }
 

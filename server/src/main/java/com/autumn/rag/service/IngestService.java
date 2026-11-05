@@ -50,8 +50,21 @@ public class IngestService {
     /** 待入库子段(所属父题已入库,拿到 chunkId 后排队等批量向量化)。 */
     private record PendingSeg(long chunkId, int seq, String embedText, String content) {}
 
+    /** 进度回调:每向量化完一批调一次。阶段一是"题目",阶段二是"子段",各自从 0 数到 total。 */
+    @FunctionalInterface
+    public interface Progress {
+        Progress NONE = (phase, done, total) -> { };
+
+        void update(String phase, int done, int total);
+    }
+
+    /**
+     * 整个过程在一个事务里:中途失败(比如向量接口挂了)全部回滚,库里还是旧索引,不会留下半套。
+     * 用的是 DELETE 而不是 TRUNCATE,只加行锁:重建期间网站照常读到旧数据,提交后一次性切换。
+     * 例外是换了向量维度:ALTER 列类型会锁表,重建完成前检索会一直等着。
+     */
     @Transactional
-    public ReindexResult reindex() {
+    public ReindexResult reindex(Progress progress) {
         // 1) 清库 + 让向量列维度跟随当前配置(换模型换维度时的必要动作)
         dao.wipe();
         dao.ensureEmbeddingDims(embed.dims());
@@ -59,6 +72,8 @@ public class IngestService {
         // 2) 逐页切题入库;长答案切子段,攒批向量化
         List<ParsedPage> pages = scanner.loadAll();
         int batchSize = Math.max(1, props.embed().batchSize());
+        int totalSections = pages.stream().mapToInt(p -> p.sections().size()).sum();
+        progress.update("题目", 0, totalSections);
         int chunkCount = 0;
         List<PendingSeg> pending = new ArrayList<>();
         for (ParsedPage page : pages) {
@@ -78,10 +93,12 @@ public class IngestService {
                                 segEmbedText(s.question(), segs.get(k).content()), segs.get(k).content()));
                     }
                 }
+                progress.update("题目", chunkCount, totalSections);
             }
         }
 
         // 3) 子段批量向量化入库(同 batchSize 节流)
+        progress.update("子段", 0, pending.size());
         for (int i = 0; i < pending.size(); i += batchSize) {
             List<PendingSeg> batch = pending.subList(i, Math.min(i + batchSize, pending.size()));
             List<float[]> vectors = embed.embed(batch.stream().map(PendingSeg::embedText).toList());
@@ -89,6 +106,7 @@ public class IngestService {
                 PendingSeg p = batch.get(j);
                 dao.insertSeg(p.chunkId(), p.seq(), p.content(), vectors.get(j));
             }
+            progress.update("子段", i + batch.size(), pending.size());
         }
 
         // 4) 记指纹(模型 + 维度 + 分块方案)

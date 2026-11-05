@@ -2,35 +2,47 @@ package com.autumn.rag.web;
 
 import com.autumn.rag.service.EvalService;
 import com.autumn.rag.service.GoldenQueryService;
-import com.autumn.rag.service.IngestService;
+import com.autumn.rag.service.ReindexJobService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "管理", description = "索引管理:全量索引 + 检索评测")
+/** /api/admin/** 统一由 AdminInterceptor 校验管理员身份,这里的方法不用再各自判断。 */
+@Tag(name = "管理", description = "仅管理员:全量索引 + 检索评测 + 用户管理")
+@SecurityRequirement(name = "bearer")
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
 
-    private final IngestService ingestService;
+    private final ReindexJobService reindexJob;
     private final EvalService evalService;
     private final GoldenQueryService goldenQueryService;
 
-    public AdminController(IngestService ingestService, EvalService evalService,
+    public AdminController(ReindexJobService reindexJob, EvalService evalService,
                            GoldenQueryService goldenQueryService) {
-        this.ingestService = ingestService;
+        this.reindexJob = reindexJob;
         this.evalService = evalService;
         this.goldenQueryService = goldenQueryService;
     }
 
-    @Operation(summary = "全量重灌索引(corpus md → chunk → embedding → pgvector)", description = "幂等,先清后插;耗时视题量而定")
+    @Operation(summary = "开始全量重建索引(corpus md → chunk → embedding → pgvector)",
+            description = "后台执行,立刻返回 202;进度用 GET /api/admin/reindex 查。已经在跑时 409。"
+                    + "先清后插,题目 id 会全部重新生成")
     @PostMapping("/reindex")
-    public IngestService.ReindexResult reindex() {
-        return ingestService.reindex();
+    public ResponseEntity<ReindexJobService.Status> reindex() {
+        return ResponseEntity.accepted().body(reindexJob.start());
+    }
+
+    @Operation(summary = "重建索引的进度 / 结果", description = "state:IDLE 本次启动后没跑过 / RUNNING / SUCCEEDED / FAILED")
+    @GetMapping("/reindex")
+    public ReindexJobService.Status reindexStatus() {
+        return reindexJob.status();
     }
 
     @Operation(summary = "构建 golden 评测集(LLM 改写题干 + 细节探针 + 域外负样本)",
