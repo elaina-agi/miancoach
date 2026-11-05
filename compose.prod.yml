@@ -32,7 +32,7 @@ services:
     volumes:
       - ./corpus:/app/corpus:ro
       - logs:/app/logs
-    # 只绑本机回环:管理接口(reindex)和 Swagger 从宿主机访问,公网只走 web
+    # 只绑本机回环:Swagger 从宿主机访问,公网只走 web(管理接口也走 web,由后端校验管理员身份)
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
