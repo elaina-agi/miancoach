@@ -17,6 +17,9 @@ const routes = [
       { path: 'quiz', name: 'quiz', component: () => import('../pages/QuizView.vue'), meta: { title: '模拟面试' } },
       { path: 'records', name: 'records', component: () => import('../pages/RecordsView.vue'), meta: { title: '复盘' } },
       { path: 'about', name: 'about', component: () => import('../pages/AboutView.vue'), meta: { title: '关于' } },
+      // 不在路由守卫里拦:直接打开 /admin 时登录弹框还没挂载,没法在守卫里等用户登录。
+      // 页面自己按登录态显示"去登录 / 没有权限",真正的拦截在后端
+      { path: 'admin', name: 'admin', component: () => import('../pages/AdminView.vue'), meta: { title: '管理后台' } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/chat' },

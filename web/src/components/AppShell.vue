@@ -67,6 +67,7 @@
                   <span v-if="currentUser.nickname" class="acct-mail">{{ currentUser.email }}</span>
                 </span>
               </div>
+              <RouterLink v-if="isAdmin" to="/admin" class="menu-item"><Shield :size="15" />管理后台</RouterLink>
               <button class="menu-item" @click="onLogout"><LogOut :size="15" />退出登录</button>
             </div>
           </Popover>
@@ -98,14 +99,14 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { BookOpen, ChartNoAxesColumn, Info, LogOut, MessageSquare, Moon, NotebookPen, Sun } from 'lucide-vue-next'
+import { BookOpen, ChartNoAxesColumn, Info, LogOut, MessageSquare, Moon, NotebookPen, Shield, Sun } from 'lucide-vue-next'
 import BrandMark from './BrandMark.vue'
 import AuthDialog from './AuthDialog.vue'
 import Popover from './ui/Popover.vue'
 import ToastHost from './ui/ToastHost.vue'
 import ConfirmHost from './ui/ConfirmHost.vue'
 import ImageZoomHost from './ui/ImageZoomHost.vue'
-import { authReady, currentUser, logout, openLogin } from '../lib/auth'
+import { authReady, currentUser, isAdmin, logout, openLogin } from '../lib/auth'
 import { loadMeta, meta, metaFailed } from '../lib/catalog'
 import { theme, toggleTheme } from '../lib/theme'
 import { toast } from '../lib/toast'

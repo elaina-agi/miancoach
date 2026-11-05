@@ -80,12 +80,8 @@ server {
         return 429 '{"error":"请求太频繁,请稍后再试"}';
     }
 
-    # 管理接口(重灌索引 / 构建评测集)没有鉴权,且会烧 LLM 额度,不对公网开放;
-    # 需要时在宿主机上直接打后端:curl -X POST http://127.0.0.1:8080/api/admin/reindex
-    # ^~:匹配上就不再看下面的正则 location,保证这条总是生效
-    location ^~ /api/admin/ {
-        return 403;
-    }
+    # 管理接口 /api/admin/** 不在这里单独拦:后端统一校验管理员身份(AdminInterceptor),
+    # 游客 401、普通用户 403,管理员在网页的「管理后台」里操作,走下面通用的 /api/
 
     # 调大模型的接口:/api/chat/ask、/api/quiz/grade|report、/api/quiz/session/{id}/grade|report
     location ~ ^/api/(chat/ask|quiz/(session/[^/]+/)?(grade|report))$ {

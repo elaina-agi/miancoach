@@ -9,6 +9,9 @@ export { currentUser }
 
 export const isLoggedIn = computed(() => currentUser.value !== null)
 
+/** 只用来决定显不显示后台入口;真正的权限校验在后端,前端改这个值也调不通管理接口 */
+export const isAdmin = computed(() => currentUser.value?.role === 'ADMIN')
+
 /** 启动时用 token 换用户信息的那一下还没完成。侧栏据此先不显示"登录"按钮,免得已登录用户看到它闪一下。 */
 export const authReady = ref(false)
 

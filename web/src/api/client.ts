@@ -1,6 +1,6 @@
 import type {
-  AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, GradeOut, GroupCounts, GroupNode,
-  LoginOut, MetaInfo, QuizOverview, QuizQuestion, QuizReport, ReindexResult, ReportItem, SessionRow, UserView, WeakRow,
+  AdminUserPage, AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, GradeOut, GroupCounts, GroupNode,
+  LoginOut, MetaInfo, QuizOverview, QuizQuestion, QuizReport, ReindexStatus, ReportItem, SessionRow, UserView, WeakRow,
 } from './types'
 import { clearSession, token } from '../lib/session'
 
@@ -39,6 +39,10 @@ function post<T>(path: string, body: unknown): Promise<T> {
   return json<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
 }
 
+function put<T>(path: string, body: unknown): Promise<T> {
+  return json<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) })
+}
+
 function del<T>(path: string): Promise<T> {
   return json<T>(path, { method: 'DELETE' })
 }
@@ -69,7 +73,20 @@ export const corpusApi = {
   groups: () => json<GroupCounts>('/api/corpus/groups'),
   chunk: (id: number) => json<ChunkFull>(`/api/corpus/chunk/${id}`),
   meta: () => json<MetaInfo>('/api/meta'),
-  reindex: () => post<ReindexResult>('/api/admin/reindex', {}),
+}
+
+// 只有管理员调得通:后端 /api/admin/** 统一校验,普通用户 403、游客 401
+export const adminApi = {
+  /** 开始重建索引,立刻返回;已经在跑时 409 */
+  reindex: () => post<ReindexStatus>('/api/admin/reindex', {}),
+  reindexStatus: () => json<ReindexStatus>('/api/admin/reindex'),
+  users: (q: string, page: number, size = 20) =>
+    json<AdminUserPage>(`/api/admin/users?${new URLSearchParams({ q, page: String(page), size: String(size) })}`),
+  setDisabled: (id: string, disabled: boolean) => put<{ ok: boolean }>(`/api/admin/users/${id}/disabled`, { disabled }),
+  setRole: (id: string, role: 'USER' | 'ADMIN') => put<{ ok: boolean }>(`/api/admin/users/${id}/role`, { role }),
+  /** 传空串 = 清空昵称 */
+  setNickname: (id: string, nickname: string) => put<{ ok: boolean }>(`/api/admin/users/${id}/nickname`, { nickname }),
+  deleteUser: (id: string) => del<{ ok: boolean }>(`/api/admin/users/${id}`),
 }
 
 // 登录用户走 session/{id} 这组(落库,复盘能回看);游客走 *Free 这组无状态接口,什么都不存

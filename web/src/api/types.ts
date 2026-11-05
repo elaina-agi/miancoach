@@ -125,12 +125,6 @@ export interface WeakRow {
   missed: number
 }
 
-export interface ReindexResult {
-  docs: number
-  chunks: number
-  groupChunks: GroupCounts
-  realModel: boolean
-}
 
 export interface IndexStatus {
   indexed: boolean
@@ -192,4 +186,51 @@ export interface UserView {
 export interface LoginOut {
   token: string
   user: UserView
+}
+
+// ── 管理后台 ──────────────────────────────────────────────────────────
+
+export interface ReindexResult {
+  docs: number
+  chunks: number
+  segs: number
+  groupChunks: GroupCounts
+  embedModel: string
+  embedDims: number
+  embedReal: boolean
+}
+
+/** 重建索引是后台任务:POST 立刻返回,之后轮询 GET 看进度。null 字段后端不返回(non_null) */
+export interface ReindexStatus {
+  /** IDLE = 服务这次启动后还没跑过 */
+  state: 'IDLE' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+  /** 跑的时候在哪个阶段:准备 / 题目 / 子段 */
+  phase?: string
+  done: number
+  total: number
+  startedAt?: string
+  finishedAt?: string
+  result?: ReindexResult
+  error?: string
+}
+
+export interface AdminUser {
+  id: string
+  email: string
+  nickname?: string
+  role: 'USER' | 'ADMIN'
+  createdAt: string
+  lastLoginAt?: string
+  /** 有值 = 已禁用,值是禁用的时间 */
+  disabledAt?: string
+  chatSessions: number
+  /** 只算答过题的场次,和复盘页一致 */
+  quizSessions: number
+}
+
+export interface AdminUserPage {
+  items: AdminUser[]
+  total: number
+  page: number
+  size: number
 }

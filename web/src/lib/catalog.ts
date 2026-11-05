@@ -58,6 +58,17 @@ export function loadTree(): Promise<void> {
   return treeReq
 }
 
+/**
+ * 重建索引后题目 id 全部重新生成,缓存里的树、题数、状态都过期了:清掉重新拉。
+ * 各页面用的是同一份 ref,拉回来后自动刷新。
+ */
+export function reloadCorpus(): Promise<void> {
+  metaReq = null
+  groupsReq = null
+  treeReq = null
+  return Promise.all([loadMeta(), loadGroups(), loadTree()]).then(() => undefined)
+}
+
 /** 树压平成一维,知识库列表、上一题/下一题、问答页的推荐题都基于它 */
 export interface FlatQuestion {
   id: number
