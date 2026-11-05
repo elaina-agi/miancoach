@@ -87,10 +87,11 @@
       </RouterLink>
     </nav>
 
-    <!-- 全局唯一的登录弹框 / 提示 / 确认框,任何地方调 openLogin() / toast / confirm() 都用这几个 -->
+    <!-- 全局唯一的登录弹框 / 提示 / 确认框 / 看大图,任何地方调 openLogin() / toast / confirm() / zoomImage() 都用这几个 -->
     <AuthDialog />
     <ToastHost />
     <ConfirmHost />
+    <ImageZoomHost />
   </div>
 </template>
 
@@ -103,6 +104,7 @@ import AuthDialog from './AuthDialog.vue'
 import Popover from './ui/Popover.vue'
 import ToastHost from './ui/ToastHost.vue'
 import ConfirmHost from './ui/ConfirmHost.vue'
+import ImageZoomHost from './ui/ImageZoomHost.vue'
 import { authReady, currentUser, logout, openLogin } from '../lib/auth'
 import { loadMeta, meta, metaFailed } from '../lib/catalog'
 import { theme, toggleTheme } from '../lib/theme'

@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
 import cjkFriendly from 'markdown-it-cjk-friendly'
 import { toast } from '../lib/toast'
+import { zoomImage } from '../lib/imageZoom'
 
 const props = defineProps<{
   content: string
@@ -73,6 +74,11 @@ async function onClick(e: MouseEvent) {
     emit('cite', Number(cite.dataset.cite))
     return
   }
+  // 点图放大;包在链接里的图按链接处理
+  if (t instanceof HTMLImageElement && !t.closest('a')) {
+    zoomImage(t)
+    return
+  }
   const copyBtn = t.closest<HTMLButtonElement>('.code-copy')
   if (copyBtn) {
     const code = copyBtn.closest('.code')?.querySelector('pre')?.textContent ?? ''
@@ -126,7 +132,8 @@ async function onClick(e: MouseEvent) {
 .md :deep(th), .md :deep(td) { border: 1px solid var(--line); padding: 7px 12px; text-align: left; vertical-align: top; }
 .md :deep(th) { background: var(--fill); font-weight: 600; white-space: nowrap; }
 
-.md :deep(img) { max-width: 100%; border-radius: var(--r); }
+.md :deep(img) { max-width: 100%; border-radius: var(--r); cursor: zoom-in; }
+.md :deep(a img) { cursor: pointer; }
 .md :deep(hr) { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
 
 .md :deep(.caret) { display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -0.17em; border-radius: 2px; background: var(--accent); animation: caret 1s steps(1) infinite; }
