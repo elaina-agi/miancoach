@@ -110,6 +110,11 @@ public class AuthService {
         String email = normalizeEmail(rawEmail);
         // 密码格式在消耗验证码之前校验:密码不合规时不应该白白用掉一个码
         validatePassword(password);
+        String nick = blankToNull(nickname);
+        // 浏览器 / 密码管理器偶尔会把密码自动填进紧挨着密码框的昵称框。昵称会明文显示在页面上,必须拦下
+        if (nick != null && nick.equals(password.trim())) {
+            throw new IllegalArgumentException("昵称不能和密码相同");
+        }
 
         // 先验码、后查重:如果先查重,这个接口就成了"邮箱是否已注册"的探测器。
         // 已注册邮箱拿到的是"注册提醒"而不是验证码,所以在这一步就会以"验证码错误"失败。
@@ -117,7 +122,7 @@ public class AuthService {
 
         UUID id;
         try {
-            id = userDao.insert(email, encoder.encode(password), blankToNull(nickname));
+            id = userDao.insert(email, encoder.encode(password), nick);
         } catch (DuplicateKeyException e) {
             // 能走到这里,只可能是同一邮箱的两个注册请求并发,另一个先插入成功
             throw new IllegalArgumentException("该邮箱已注册,请直接登录");

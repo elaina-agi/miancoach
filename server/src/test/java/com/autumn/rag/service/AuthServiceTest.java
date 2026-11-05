@@ -194,6 +194,16 @@ class AuthServiceTest {
         verify(codeDao, never()).latest(any(), any());
     }
 
+    /** 昵称被自动填充成了密码:拒绝,而且同样不消耗验证码。 */
+    @Test
+    void register_nicknameEqualsPassword_rejected() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> auth.register(EMAIL, CODE, "password123", " password123 "));
+        assertTrue(e.getMessage().contains("昵称"));
+        verify(codeDao, never()).latest(any(), any());
+        verify(userDao, never()).insert(any(), any(), any());
+    }
+
     // ------------------------------------------------------------------ 登录
 
     @Test

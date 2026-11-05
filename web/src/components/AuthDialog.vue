@@ -71,7 +71,10 @@
       </label>
       <label class="field">
         <span class="label">昵称 <em>可选</em></span>
-        <input v-model="regForm.nickname" class="input" maxlength="20" placeholder="显示用，不填也行" />
+        <!-- autocomplete="nickname":告诉浏览器这是昵称。不标的话,紧跟在密码框后面的文本框可能被当成"确认密码"自动填进密码 -->
+        <input v-model="regForm.nickname" class="input" :class="{ invalid: errs.nick }" name="nickname" autocomplete="nickname"
+               maxlength="20" placeholder="显示用，不填也行" />
+        <span v-if="errs.nick" class="err">{{ errs.nick }}</span>
       </label>
       <button class="btn btn-primary btn-lg submit" type="submit" :disabled="submitting">
         <LoaderCircle v-if="submitting" :size="16" class="spin" />注册并登录
@@ -99,7 +102,7 @@ const submitting = ref(false)
 const showPw = ref(false)
 
 // 规则与后端 AuthController / AuthService 一致;前端校验只为即时提示,后端照样会校验
-const errs = reactive({ loginEmail: '', loginPw: '', regEmail: '', code: '', regPw: '' })
+const errs = reactive({ loginEmail: '', loginPw: '', regEmail: '', code: '', regPw: '', nick: '' })
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function emailError(v: string): string {
@@ -114,7 +117,8 @@ watch(() => loginForm.email, () => { errs.loginEmail = '' })
 watch(() => loginForm.password, () => { errs.loginPw = '' })
 watch(() => regForm.email, () => { errs.regEmail = '' })
 watch(() => regForm.code, () => { errs.code = '' })
-watch(() => regForm.password, () => { errs.regPw = '' })
+watch(() => regForm.password, () => { errs.regPw = ''; errs.nick = '' })
+watch(() => regForm.nickname, () => { errs.nick = '' })
 // 切换登录/注册时把邮箱带过去,常见情况是"登录发现没账号 → 去注册"
 watch(dialogTab, (tab) => {
   if (tab === 'register' && !regForm.email) regForm.email = loginForm.email
@@ -179,7 +183,9 @@ async function onRegister() {
   errs.regEmail = emailError(regForm.email)
   errs.code = /^\d{6}$/.test(regForm.code) ? '' : (regForm.code ? '验证码是 6 位数字' : '请输入验证码')
   errs.regPw = regForm.password.length >= 8 ? '' : (regForm.password ? '密码至少 8 位' : '请输入密码')
-  if (errs.regEmail || errs.code || errs.regPw) return
+  const nick = regForm.nickname.trim()
+  errs.nick = nick && nick === regForm.password.trim() ? '昵称会公开显示，不能和密码相同' : ''
+  if (errs.regEmail || errs.code || errs.regPw || errs.nick) return
   submitting.value = true
   try {
     const out = await authApi.register(regForm.email, regForm.code, regForm.password,
@@ -199,7 +205,7 @@ function onClosed() {
   regForm.password = ''
   regForm.code = ''
   showPw.value = false
-  Object.assign(errs, { loginEmail: '', loginPw: '', regEmail: '', code: '', regPw: '' })
+  Object.assign(errs, { loginEmail: '', loginPw: '', regEmail: '', code: '', regPw: '', nick: '' })
   cancelLogin()
 }
 </script>
