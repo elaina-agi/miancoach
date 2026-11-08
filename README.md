@@ -1,144 +1,265 @@
-# baguwen-rag — MianCoach「AI 模拟面试官」(RAG)
+# MianCoach · RAG 知识库与模拟面试
 
-MianCoach 是一个基于 RAG 的技术知识学习应用,支持知识库问答、来源引用、模拟面试批改与练习复盘。题库语料来自小林coding,使用时保留作者署名与原文链接。
-技术:Spring Boot 3 / **Java 17**+ Vue3(Vite) + PostgreSQL16/pgvector + DashScope(OpenAI 兼容协议)。语料抓取用 Python。
+MianCoach（baguwen-rag）是一个基于检索增强生成（RAG）的技术知识学习应用，将知识库问答、模拟面试和练习复盘整合在同一套题库中。系统从题库原文检索参考资料，生成带来源引用的回答，并根据标准资料提供作答反馈。
+
+## 主要功能
+
+- **知识库问答**：支持流式回答、来源引用和多轮追问，可打开引用核对原文。
+- **题库浏览**：按板块、类目浏览题目，支持搜索高亮、题目定位和原文查看。
+- **模拟面试**：按范围抽题，对照题库原文批改，展示得分、命中的知识点和遗漏项。
+- **练习复盘**：查看场次记录、逐题批改、得分趋势及按板块聚合的薄弱点，生成场次总结。
+- **账号与历史**：支持邮箱验证码注册、密码登录和 JWT 鉴权；游客可体验问答与练习，登录后按账号保存历史。
+- **模型配置**：生成、向量、重排分别配置；支持 Mock 联调、重排失败降级及可选备用生成模型。
+
+> AI 生成的回答和评分可能存在偏差，来源引用与相关性阈值不能保证答案完全正确，请结合原文核验。
+
+## 技术栈
+
+| 模块 | 技术 |
+| --- | --- |
+| 后端 | Java 17、Spring Boot 3、JdbcTemplate、Flyway |
+| 前端 | Vue 3、TypeScript、Vite、Vue Router |
+| 数据存储 | PostgreSQL 16、pgvector |
+| 模型接入 | OpenAI 兼容接口、Embedding、Cross-encoder Rerank |
+| 语料处理 | Python、Requests、Beautiful Soup、Java Markdown 解析与分块 |
+| 接口与部署 | Springdoc / Swagger UI、SSE、Docker Compose、Nginx、GitHub Actions |
+
+## 系统架构
+
+```text
+语料入库
+题库网页 → Python 抓取与清洗 → Markdown
+                                  ↓
+                    Java 按题切分 → 长答案切子段
+                                  ↓
+                       批量 Embedding → pgvector
+                                  ↓
+                        记录模型与分块方案指纹
+
+在线问答
+用户问题 → 必要时改写追问 → 精确 / 向量 / 关键词召回
+                                  ↓
+                         去重 → Rerank → Top N
+                                  ↓
+                   相关性检查 → 原文与命中子段组装
+                                  ↓
+                       生成模型 → SSE 回答与引用
+```
+
+### 核心设计
+
+- **父子分块**：每道题保存完整答案，长答案额外建立子段向量。子段命中后关联父题，在生成上下文中优先放入命中片段，再按字符预算补充父题正文。
+- **多路召回与重排**：归一化题干精确匹配、题目级与子段级向量检索、关键词匹配共同构建候选，重排模型统一打分后返回最终材料；重排失败时保留召回原序。
+- **索引一致性**：检索前校验模型名称、向量维度及分块方案，发现不一致时要求重建索引，避免混用不同向量空间。
+- **相关性检查**：无精确命中且向量分数、重排分数同时低于配置阈值时返回拒答，避免直接基于低相关材料生成回答。
+- **流式输出与来源记录**：通过 `refs → delta → done` 事件返回引用和增量文本；拒答在 `done` 数据中标记 `noAnswer=true`。登录用户的回答与引用快照随会话保存。
+- **基于原文批改**：模拟面试按题目 ID 获取标准资料，将用户作答与资料一并提交给生成模型，返回结构化反馈。
+
+核心实现入口：[IngestService](<server/src/main/java/com/autumn/rag/service/IngestService.java>)、[RetrieveService](<server/src/main/java/com/autumn/rag/service/RetrieveService.java>)、[AskService](<server/src/main/java/com/autumn/rag/service/AskService.java>)。
 
 ## 项目结构
 
-```
-compose.yml           pgvector 容器(baguwen-pg @15432,命名带前缀防撞车)
-crawler/              Python:HTML→md 爬虫
-corpus/               语料层(不入库,运行爬虫生成):corpus/interview/<板块>/<页>.md
-server/               Spring Boot 后端
-web/                  Vue3 前端(问答/知识库/模拟面试/复盘)
+```text
+baguwen-rag/
+├── crawler/             网页抓取与 Markdown 清洗
+├── corpus/              本地语料，运行爬虫生成，不随仓库分发
+├── server/              Spring Boot 后端、数据库迁移与测试
+├── web/                 Vue 3 前端
+├── compose.yml          本地 pgvector 数据库
+├── compose.prod.yml     容器部署配置
+└── .env.example         环境变量示例
 ```
 
 ## 快速启动
 
-前置:Docker、JDK 17、Maven 3.9、Node 22。以下命令都在项目根目录执行。
+### 环境要求
 
-**1. 生成语料**(`corpus/` 是第三方原文,版权归原作者,不随仓库分发,需要自己抓):
+- Docker / Docker Compose
+- JDK 17、Maven 3.9
+- Node.js 22、pnpm
+- Python 3
+
+以下步骤从项目根目录开始。Python 示例使用 Windows 虚拟环境路径，Linux / macOS 请将 `.venv/Scripts/` 替换为 `.venv/bin/`。
+
+### 1. 准备配置
+
+复制[环境变量示例](<.env.example>)：
+
+```bash
+cp .env.example .env
+```
+
+PowerShell 也可使用：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+按需配置模型、数据库、邮件服务与 JWT 密钥。未配置模型 Key 且 `provider=auto` 时使用 Mock，仅用于验证接口和交互流程，不代表真实检索、生成或批改效果。
+
+### 2. 获取语料
+
+题库原文版权归原作者，不随仓库分发。请先阅读本文末尾的「题库来源与版权」，再按需抓取：
 
 ```bash
 python -m venv .venv
-.venv/Scripts/pip install requests beautifulsoup4    # Linux/macOS 用 .venv/bin/pip
-.venv/Scripts/python -m crawler.main                 # 小林coding 13 页 574 题(java/database/architecture/tools)
-.venv/Scripts/python -m crawler.ai_pages             # 小林面试笔记 AI 面试题 98 题(Agent/RAG/工具调用/大模型工程)
+.venv/Scripts/pip install requests beautifulsoup4
+.venv/Scripts/python -m crawler.main
+.venv/Scripts/python -m crawler.ai_pages
 ```
 
-**2. 起数据库**
+前者抓取小林coding 配置的页面，后者抓取小林面试笔记中的 AI 专题。输出位于 `corpus/interview/<板块>/<页面>.md`。
+
+### 3. 启动数据库
 
 ```bash
-docker compose up -d            # 容器 baguwen-pg,端口 15432;表结构由后端 Flyway 自动建
+docker compose up -d
 ```
 
-**3. 配置并起后端**
+默认容器为 `baguwen-pg`，宿主机端口为 `15432`。后端启动时由 Flyway 执行数据库迁移。
+
+### 4. 启动后端
+
+在一个终端中执行：
 
 ```bash
-cp .env.example .env            # 不填任何 key 也能跑:provider=auto 时自动走 mock
-cd server && mvn spring-boot:run
-curl -X POST http://localhost:8080/api/admin/reindex   # 全量入库:切题 → 子段 → 向量
-curl http://localhost:8080/api/meta                    # 确认 chatReal/embedReal 为 true、index.compatible 为 true
+cd server
+mvn spring-boot:run
 ```
 
-三套模型配置**各自独立**(各有 base-url / key / model),在 `.env` 里填:
-
-| 端 | 干什么 | 换了会怎样 |
-|---|---|---|
-| chat 生成端 | 问答、批改、场次报告、追问改写 | 随便换,不影响已入库的向量 |
-| embed 向量端 | 建索引 + 查询向量化 | **换模型/维度必须重新 reindex**,否则检索直接 409 |
-| rerank 重排端 | cross-encoder 给候选统一打分 | 换了不用重灌;挂了自动降级回召回原序 |
-
-实测可用组合:生成走百炼(`qwen-plus`),向量 + 重排走硅基流动(`BAAI/bge-m3` + `BAAI/bge-reranker-v2-m3`,都免费)。
-`BAGUWEN_EMBED_BASE_URL` 一定要显式填(`.env.example` 已填好),yml 里的默认 base-url 与默认模型不配套。
-发验证码邮件填 `BAGUWEN_SMTP_PASSWORD`(默认走 Resend SMTP),不填则验证码打印在 `logs/server.log`(搜 `[mock mail]`)。
-
-**4. 起前端**
+另开终端检查服务状态：
 
 ```bash
-cd web && pnpm install && pnpm dev       # http://localhost:5173,/api 已代理到 8080
-pnpm typecheck                           # vue-tsc 类型检查
+curl http://localhost:8080/api/meta
 ```
 
-Swagger:http://localhost:8080/swagger-ui.html  ·  接口清单:`server/api.http`
+`chatReal`、`embedReal` 可用于确认是否接入真实模型；首次启动尚未建立索引时，需要继续完成下方的索引初始化。
 
-**小坑**
+### 5. 启动前端
 
-- 语料新增/修改后要 `POST /api/admin/reindex` 才进检索(先清后插,题目 id 会全部重新生成)
-- 改了 `SubSegmenter` 的切分规则也必须重灌:指纹里记了分块方案,不一致同样 409
-- 重排会静默降级:日志里搜 `重排失败,降级回召回原序`,有就是没在跑
-- Git Bash 里 curl 传中文 body 会变 GBK:用 `--data-binary @file.json`(UTF-8 文件)
+在项目根目录另开终端：
+
+```bash
+cd web
+pnpm install
+pnpm dev
+```
+
+- 前端：http://localhost:5173
+- 后端：http://localhost:8080
+- Swagger：http://localhost:8080/swagger-ui.html
+- 请求示例：[server/api.http](<server/api.http>)
+
+开发环境的前端 `/api` 请求代理到后端 `8080` 端口。
+
+### 6. 初始化索引
+
+后端启动后，在本机调用索引接口：
+
+```bash
+curl -X POST http://localhost:8080/api/admin/reindex
+```
+
+等待入库完成，确认 `/api/meta` 返回的 `index.compatible` 为 `true`。索引和评测接口应仅在受信任的本地或内网环境中使用，避免暴露给公网。
+
+## 模型与检索配置
+
+配置示例见[.env.example](<.env.example>)，完整默认值见[application.yml](<server/src/main/resources/application.yml>)。
+
+| 模型端 | 用途 | 更换后的处理 |
+| --- | --- | --- |
+| `chat` 生成端 | 问答、批改、场次总结、追问改写 | 不需要重建向量索引 |
+| `embed` 向量端 | 语料向量化与查询向量化 | 更换模型或维度后必须重建索引 |
+| `rerank` 重排端 | 对召回候选进行相关性打分 | 不需要重建索引；失败时降级 |
+
+示例配置使用百炼 `qwen-plus` 生成，以及硅基流动 `BAAI/bge-m3` 向量模型、`BAAI/bge-reranker-v2-m3` 重排模型。可替换为兼容接口，模型可用性、费用和限额以服务商说明为准。
+
+注意事项：
+
+- 显式配置 `BAGUWEN_EMBED_BASE_URL`，确保地址与模型匹配，不要仅修改模型名称。
+- 重排 Key 未设置时会回退使用向量端 Key；两端使用不同服务商时，应显式配置各自的 Key 和地址。
+- 默认 `vector-k=10`：父题和子段向量各取 10 条；`candidate-k=20`：最多 20 个候选进入重排；`top-n=5`：最终返回 5 条材料。
+- 修改分块规则并更新方案标识后，也需要重建索引。
+- 备用生成模型为可选配置；未配置备用 Key 时，不启用备用模型。
+- 未配置真实邮件服务时，验证码写入本地运行日志，可搜索 `[mock mail]`；默认路径见[日志配置](<server/src/main/resources/application.yml#L138-L140>)。生产环境应使用真实邮件服务。
 
 ## Docker 部署
 
-push 到 main(改动涉及 `server/`、`web/`)后,GitHub Actions(`.github/workflows/docker.yml`)自动构建两个镜像推到 ghcr:
+[GitHub Actions 配置](<.github/workflows/docker.yml>)会在主分支相关代码更新后构建并推送镜像，当前目标架构为 `linux/arm64`：
 
-- `ghcr.io/abkkkbb/baguwen-rag-server`:Spring Boot,镜像构建时跑单测,挂了不出镜像
-- `ghcr.io/abkkkbb/baguwen-rag-web`:nginx 托管前端,`/api` 反代到 server(已关缓冲,SSE 正常流式);`/api/admin/` 对外 403
+- `ghcr.io/abkkkbb/baguwen-rag-server`
+- `ghcr.io/abkkkbb/baguwen-rag-web`
 
-tag:`latest`(main 最新)、`sha-<7位>`(每次提交,回滚用)、打 `v1.2.3` 标签额外出 `1.2.3` / `1.2`。
+镜像支持 `latest`、提交 SHA 标签，以及 `v*` 发布标签对应的语义化版本标签。Fork 仓库后，需将[部署配置](<compose.prod.yml>)中的镜像地址改为自己的命名空间；其他部署架构需调整构建配置。
 
-服务器上(同目录放 `compose.prod.yml`、`.env`、`corpus/`):
+在部署目录准备好[compose.prod.yml](<compose.prod.yml>)、环境配置和已生成的语料目录，然后执行：
 
 ```bash
-docker login ghcr.io -u abkkkbb          # 仓库私有,密码填 classic PAT(勾 read:packages)
-docker compose -f compose.prod.yml pull && docker compose -f compose.prod.yml up -d
-curl -X POST http://127.0.0.1:8080/api/admin/reindex    # 首次入库;server 端口只绑本机回环
+# 镜像需要鉴权时，先使用具有 read:packages 权限的凭据登录
+# docker login ghcr.io -u <GitHub用户名>
+docker compose -f compose.prod.yml pull
+docker compose -f compose.prod.yml up -d
 ```
 
-## 现状(2026-09-12,feat/production-ready 分支):全链路可用 + 检索管线升级
+首次部署后，需要从宿主机调用索引接口完成入库。
 
-- **索引**:corpus → Java 分块(叶子级标题=题,兼容 h2/h3)→ **长答案切子段(parent-child,574 题 → 1155 子段)**
-  → 向量(1024d)→ pgvector;`index_meta` 指纹带分块方案,换方案未重灌直接 409
-  - `POST /api/admin/reindex` = **13 doc / 574 chunk / 1155 seg**
-- **检索**:exact / vector(题目级+子段级同池) / keyword 多路召回 → 前 20 候选交 **bge-reranker-v2-m3(免费)统一重排**
-  → top5;子段命中的重排证据用子段正文;重排挂掉自动降级回召回原序
-- **拒答**:余弦与重排分双门槛(同时过低才拒),域外问题不硬答,`noAnswer` 事件 + 诚实话术
-- **评测(去自环)**:`POST /api/admin/eval/build` 用 LLM 把题干改写成真实问法 + 细节探针 + 域外负样本;
-  `GET /api/admin/eval?mode=golden` 报 recall@k / MRR / 延迟 / 拒答定标(数字见下方「评测结果」)
-- **多轮追问**:`/api/chat/ask` 带 history,追问里的"它/那个"先改写成独立问题再检索
-- **问答**:`POST /api/chat/ask`(SSE:refs→delta→done),子段命中片段前置进上下文,答案引用可点开原文
-- **模拟面试**:`/api/quiz/start|pick|grade`,批改=LLM 对照标准原文逐点评分(hits/missing),登录用户落库
-- **游客模式**:不登录也能问答、模拟面试,只是不留历史;登录后问答历史与面试记录按账号隔离,互相看不到
-- **复盘**:场次记录 + 按板块/类目的薄弱聚合
-- 前端四页(问答/知识库/模拟面试/复盘),不依赖组件库(自写弹框/侧滑面板/提示,图标用 lucide),暖白纸色 + 玉绿强调,深浅主题跟随系统
-  - 问答:会话 id 进 URL(刷新不丢),回答里的 [n] 可点开来源原文(宽屏并排、窄屏侧滑),往上翻时不被流式输出拽回底部
-  - 知识库:板块筛选 + 搜索高亮,题号进 URL,← → 翻上一题/下一题
-  - 模拟面试:选范围和题量 → 作答(Ctrl+Enter 提交)→ 批改 → 本场总结;同一场不重复出题
-  - 复盘:统计卡 + 薄弱点(均分从低到高,可一键去练)+ 场次得分柱状图 + 逐题回看
-- Swagger: http://localhost:8080/swagger-ui.html
+部署前请更换示例数据库密码、设置稳定的 `BAGUWEN_JWT_SECRET`，并按需配置模型 Key、邮件服务与访问额度。默认只将后端 `8080` 绑定到本机回环地址，前端由 Nginx 提供服务并反向代理 `/api`；SSE 已关闭代理缓冲。
 
-- **账号**:邮箱验证码注册 + 密码登录(BCrypt + JWT);游客模式,不登录也能问答和浏览,需要时再弹登录框
+## 检索评测
 
-## 评测结果(2026-09-12,原 574 题语料)
+提供两种评测模式：
 
-golden 集去自环:LLM 把题干改写成真实问法(1146 条)+ 长答案细节探针(39 条)+ 域外负样本(10 条)。
-固定种子抽样 n=200 + 全量探针,同一集合对比三种配置:
+- **`mode=golden`**：使用独立改写问题、长答案细节探针和域外负样本，衡量 Recall@K、MRR、延迟及拒答表现。
+- **`mode=self`**：用题干原文检索对应题目，适合链路回归，不应将其结果当作真实问法的检索质量。
 
-| 指标 | 旧分块 | parent-child 无重排 | **parent-child + rerank(上线配置)** |
-|---|---|---|---|
-| 混合 recall@5 | 0.965 | 0.945 | **0.955** |
+可在本机使用以下接口，具体请求示例见[server/api.http](<server/api.http>)：
+
+```text
+POST /api/admin/eval/build
+GET  /api/admin/eval?mode=golden&n=200&topN=5
+```
+
+构建评测集会调用生成模型，完整评测也会产生模型调用，请留意耗时与服务额度。重建索引或更新语料后，应重新构建匹配的评测集。
+
+### 历史对比结果
+
+以下为项目记录的 **2026-09-12、原 574 道题语料**上的评测结果，不代表当前所有配置和数据版本的效果。评测集包含 1146 条改写问题、39 条细节探针和 10 条域外负样本；使用固定种子抽样 `n=200`，并评测全量细节探针。
+
+| 指标 | 旧分块 | 父子分块，无重排 | 父子分块 + 重排 |
+| --- | ---: | ---: | ---: |
+| 混合 Recall@5 | 0.965 | 0.945 | 0.955 |
 | 混合 MRR | 0.865 | 0.804 | 0.840 |
-| **探针 recall@1** | 0.615 | 0.692 | **0.795** |
-| **探针 recall@5** | 0.846 | 0.923 | **0.949** |
-| 平均检索延迟 | 194ms | 207ms | 506ms |
+| 细节探针 Recall@1 | 0.615 | 0.692 | 0.795 |
+| 细节探针 Recall@5 | 0.846 | 0.923 | 0.949 |
+| 平均检索延迟 | 194 ms | 207 ms | 506 ms |
 
-后来新增的 98 道 AI 题不在这份评测集里;要覆盖它们需重跑 `POST /api/admin/eval/build`。
-**不要用 `mode=self`(默认值)看效果**:那是拿题干原文搜同一题,recall 恒为假满分,只能验证链路没坏。
+这组对比体现了细节检索与延迟之间的取舍，并非所有指标同时提升。后续新增的 98 道 AI 题不在该评测集内，覆盖新语料需要重新构建评测集并运行评测。
 
-## 语料(corpus/)状态与约定
-
-- 布局:corpus/interview/<板块group>/<页>.md;板块按**站侧边栏编号**分组(06架构设计=消息队列+分布式+系统设计)。
-- 两种题级结构:java/database/mq/cap 页 h2=类目 h3=题;systemdesign 与 tools 页 h2 直接当题。切题规则=**叶子级标题即一道题**。
-- 小林coding 13 页:java5 + database2(mysql94/redis48) + architecture3(mq38/cap19/systemdesign14) + tools3(linux/git/docker)。
-- AI 面试题(`corpus/interview/ai/`,来自 xiaolinnote.com,一题一页):agent30 / rag23 / tools22 / llm23。
-  每专题合并成一个 md;文章内小节标题降为加粗段落(否则会被当成题),丢弃开头情景对话里故意答错的反面示范。
-
-## 抓取
+## 开发与维护
 
 ```bash
-.venv/Scripts/python -m crawler.main            # 小林coding PAGES 清单全部
-.venv/Scripts/python -m crawler.ai_pages        # AI 面试题;--topic rag 只抓一个专题
-.venv/Scripts/python crawler/probe_groups.py    # 摸底站点板块结构
+# 后端测试，在 server 目录执行
+mvn test
+
+# 前端检查与构建，在 web 目录执行
+pnpm typecheck
+pnpm build
 ```
-已处理:标题锚点、代码行号、页顶广告、嵌套 strong、全角标点保真、图片只留外链引用。每篇间隔 1 秒。
+
+- **语料结构**：按 Markdown 叶子级标题切题，兼容 `h2 类目 → h3 题目` 与 `h2 题目` 两种布局；答案内部小节应避免被识别为独立题目。
+- **更新语料**：新增或修改语料后，调用索引接口重建索引。当前采用全量替换，题目 ID 会重新生成，并非增量更新。
+- **重建失败**：入库数据库操作在事务内执行，异常时回滚；更换向量维度需要修改列类型，期间可能阻塞查询。
+- **重排降级**：日志中的 `重排失败,降级回召回原序` 表示该次检索未使用重排结果。
+- **中文请求**：命令行编码不一致时，可将请求体保存为 UTF-8 文件，并通过 `curl --data-binary @file.json` 发送。
+- **抓取工具**：可用 `python -m crawler.ai_pages --topic rag` 抓取指定 AI 专题；站点结构检查工具见 [probe_groups.py](<crawler/probe_groups.py>)。
+
+## 题库来源与版权
+
+题目与标准答案来自原作者**小林**（公众号「小林coding」）的两个网站，**题库内容版权归原作者所有**：
+
+- [小林coding](https://xiaolincoding.com/)：Java、MySQL、Redis、消息队列、分布式、系统设计、Linux、Git、Docker。
+- [小林面试笔记](https://xiaolinnote.com/)：Agent、RAG、工具调用与大模型工程等 AI 专题。
+
+本站已取得原作者同意公开使用，条件是注明来源。使用或展示题库内容时应保留作者署名，并提供原文链接。
+
+题库原文不随本仓库分发。抓取、使用或转载相关内容时，请遵守原站要求，并保留作者署名和原文链接；本项目不授予第三方题库内容的再分发权利。
