@@ -32,6 +32,8 @@
     </div>
 
     <footer v-if="current" class="src-foot">
+      <!-- 收藏当前来源对应的父题,不是 AI 回答或某个检索子段;旧引用原文失效时不提供收藏。 -->
+      <FavoriteButton v-if="detail?.chunkId === current.chunkId" :chunk-id="current.chunkId" />
       <RouterLink :to="`/kb/${current.chunkId}`" class="btn btn-secondary btn-sm">
         <BookOpen :size="14" />在知识库中阅读
       </RouterLink>
@@ -46,6 +48,7 @@
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { BookOpen, ExternalLink, X } from 'lucide-vue-next'
 import MarkdownView from '../MarkdownView.vue'
+import FavoriteButton from '../FavoriteButton.vue'
 import SourceCredit from '../SourceCredit.vue'
 import { corpusApi } from '../../api/client'
 import type { AskRef, ChunkFull } from '../../api/types'
@@ -105,5 +108,10 @@ watch(() => current.value?.chunkId, () => {
 .src-fail { margin-top: 24px; color: var(--ink-2); font-size: 14px; }
 .link { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font-weight: 500; }
 
-.src-foot { flex: none; display: flex; gap: 8px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.src-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.src-foot > .favorite-control { max-width: 100%; }
+@media (max-width: 720px) {
+  .src-foot { padding-left: 16px; padding-right: 16px; }
+  .src-foot > .btn { min-height: 36px; }
+}
 </style>
