@@ -31,9 +31,9 @@ class SmtpMailProviderTest {
     @Test
     void buildsUtf8MessageWithDisplayName() throws Exception {
         JavaMailSender sender = senderStub();
-        SmtpMailProvider p = new SmtpMailProvider(sender, "smtp.resend.com", "noreply@example.com", "面试陪练");
+        SmtpMailProvider p = new SmtpMailProvider(sender, "smtp.resend.com", "noreply@example.com", "MianCoach 面试陪练");
 
-        p.send("user@example.com", "【面试陪练】注册验证码", "你的验证码是 123456");
+        p.send("user@example.com", "【MianCoach】注册验证码", "你的验证码是 123456");
         p.close();
 
         ArgumentCaptor<MimeMessage> cap = ArgumentCaptor.forClass(MimeMessage.class);
@@ -41,9 +41,9 @@ class SmtpMailProviderTest {
         MimeMessage m = cap.getValue();
         InternetAddress from = (InternetAddress) m.getFrom()[0];
         assertEquals("noreply@example.com", from.getAddress());
-        assertEquals("面试陪练", from.getPersonal()); // 中文显示名编码后能还原,收件箱里才不会乱码
+        assertEquals("MianCoach 面试陪练", from.getPersonal()); // 中文显示名编码后能还原,收件箱里才不会乱码
         assertEquals("user@example.com", m.getRecipients(Message.RecipientType.TO)[0].toString());
-        assertEquals("【面试陪练】注册验证码", m.getSubject());
+        assertEquals("【MianCoach】注册验证码", m.getSubject());
         assertTrue(m.getContent().toString().contains("123456"));
     }
 

@@ -1,3 +1,4 @@
+# MianCoach 沿用旧项目名/容器/数据卷,避免改名后误连新空库。
 name: baguwen-rag
 
 # 只跑数据库;后端/前端本机跑,便于断点调试。命名全带 baguwen 前缀,避免与其它项目(counseling 等)撞车。

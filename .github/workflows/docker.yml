@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 镜像名:ghcr.io/<owner>/baguwen-rag-server、ghcr.io/<owner>/baguwen-rag-web
+        # 主镜像使用 MianCoach 名称;原仓库额外保留 baguwen-rag-* 别名兼容既有部署。
         app: [server, web]
     steps:
       - uses: actions/checkout@v7
@@ -44,10 +44,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 仓库改名后旧 GHCR package 不会自动改名或自动重定向。
+      # 固定品牌主镜像名称,按 owner 转小写;仅原仓库发布旧别名,不让任意 fork 写旧包。
+      - id: images
+        shell: bash
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          APP: ${{ matrix.app }}
+        run: |
+          owner="${OWNER,,}"
+          {
+            echo 'names<<EOF'
+            echo "ghcr.io/${owner}/miancoach-${APP}"
+            if [[ "${REPOSITORY_ID}" == '1433491551' && "${owner}" == 'abkkkbb' ]]; then
+              echo "ghcr.io/${owner}/baguwen-rag-${APP}"
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}-${{ matrix.app }}
+          images: ${{ steps.images.outputs.names }}
           # latest 跟 main 走;sha-xxxxxxx 每次都有,回滚用;v1.2.3 标签出 1.2.3 和 1.2
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}

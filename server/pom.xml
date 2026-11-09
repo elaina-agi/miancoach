@@ -12,10 +12,10 @@
   </parent>
 
   <groupId>com.autumn</groupId>
-  <artifactId>baguwen-server</artifactId>
+  <artifactId>miancoach-server</artifactId>
   <version>0.1.0</version>
-  <name>baguwen-server</name>
-  <description>面试陪练 · AI 模拟面试官(RAG)</description>
+  <name>MianCoach Server</name>
+  <description>MianCoach · AI 面试陪练（RAG）</description>
 
   <properties>
     <java.version>17</java.version>

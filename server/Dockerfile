@@ -6,7 +6,7 @@ WORKDIR /src
 COPY pom.xml .
 RUN mvn -B -ntp dependency:go-offline
 COPY src ./src
-# 不加 -DskipTests:单测都是纯单元测试(不连库),挂了就不出镜像
+# 不加 -DskipTests:普通回归不连库;真实数据库测试仅显式设置 BAGUWEN_TEST_DB_* 才运行。
 RUN mvn -B -ntp package
 
 # ── 运行 ──
@@ -17,7 +17,8 @@ WORKDIR /app/server
 RUN useradd --system --uid 10001 app \
     && mkdir -p /app/corpus /app/logs \
     && chown -R app /app
-COPY --from=build /src/target/*.jar app.jar
+# 只复制改名后的主产物,避免本地保留旧 JAR 时通配符误匹配多个文件。
+COPY --from=build /src/target/miancoach-server-*.jar app.jar
 # 部署时前面总有反代(web 容器的 nginx,或宿主机的 Caddy/nginx):让 getRemoteAddr() 取 X-Forwarded-For 里的真实 IP,
 # 否则验证码的按 IP 限流会把所有人算成同一个代理 IP。只信任内网段来的代理头,公网直连伪造不了
 ENV SERVER_FORWARD_HEADERS_STRATEGY=native

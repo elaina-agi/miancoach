@@ -97,10 +97,10 @@ public class AuthService {
         codeDao.insert(email, PURPOSE_REGISTER, hash(email, code), ip, cfg.codeTtlMinutes());
 
         if (userDao.existsByEmail(email)) {
-            mail.send(email, "【面试陪练】注册提醒",
+            mail.send(email, "【MianCoach】注册提醒",
                     "该邮箱已经注册过账号,直接登录即可。\n如果不是你本人操作,忽略这封邮件。");
         } else {
-            mail.send(email, "【面试陪练】注册验证码",
+            mail.send(email, "【MianCoach】注册验证码",
                     "你的验证码是 " + code + "," + cfg.codeTtlMinutes() + " 分钟内有效。\n"
                             + "如果不是你本人操作,忽略这封邮件。");
         }

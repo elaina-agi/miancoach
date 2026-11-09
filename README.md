@@ -1,11 +1,14 @@
-# MianCoach · RAG 知识库与模拟面试
+# MianCoach · AI 面试陪练
 
-MianCoach（baguwen-rag）是一个基于检索增强生成（RAG）的技术知识学习应用，将知识库问答、模拟面试和练习复盘整合在同一套题库中。系统从题库原文检索参考资料，生成带来源引用的回答，并根据标准资料提供作答反馈。
+MianCoach 是一个基于检索增强生成（RAG）的技术面试陪练应用，将知识库问答、题目收藏、模拟面试和练习复盘整合在同一套题库中。系统从题库原文检索参考资料，生成带来源引用的回答，并根据标准资料提供作答反馈。
+
+仓库：[abkkkbb/miancoach](https://github.com/abkkkbb/miancoach)。原仓库名为 `baguwen-rag`；现有部署保持数据库与环境变量兼容，迁移注意事项见下方「命名与升级兼容」。
 
 ## 主要功能
 
 - **知识库问答**：支持流式回答、来源引用和多轮追问，可打开引用核对原文。
 - **题库浏览**：按板块、类目浏览题目，支持搜索高亮、题目定位和原文图片查看。
+- **个人收藏**：从知识库或问答来源原文收藏整道题，按用户隔离，支持板块筛选和分页复习。
 - **模拟面试**：按范围抽题，对照题库原文批改，展示得分、命中的知识点和遗漏项。
 - **练习复盘**：查看场次记录、逐题批改、得分趋势及按板块聚合的薄弱点，生成场次总结。
 - **账号与历史**：支持邮箱验证码注册、密码登录和 JWT 鉴权；游客可体验问答与练习，登录后按账号保存历史。
@@ -61,7 +64,7 @@ MianCoach（baguwen-rag）是一个基于检索增强生成（RAG）的技术知
 ## 项目结构
 
 ```text
-baguwen-rag/
+miancoach/
 ├── crawler/             网页抓取与 Markdown 清洗
 ├── corpus/              本地语料，运行爬虫生成，不随仓库分发
 ├── server/              Spring Boot 后端、数据库迁移与测试
@@ -80,7 +83,14 @@ baguwen-rag/
 - Node.js 22、pnpm
 - Python 3
 
-以下步骤从项目根目录开始。Python 示例使用 Windows 虚拟环境路径，Linux / macOS 请将 `.venv/Scripts/` 替换为 `.venv/bin/`。
+以下步骤从项目根目录开始。首次获取项目：
+
+```bash
+git clone https://github.com/abkkkbb/miancoach.git
+cd miancoach
+```
+
+Python 示例使用 Windows 虚拟环境路径，Linux / macOS 请将 `.venv/Scripts/` 替换为 `.venv/bin/`。
 
 ### 1. 准备配置
 
@@ -197,14 +207,33 @@ docker exec -it baguwen-pg psql -U baguwen -d baguwen_rag -c "UPDATE app_user SE
 - 备用生成模型为可选配置；未配置备用 Key 时，不启用备用模型。
 - 未配置真实邮件服务时，验证码写入本地运行日志，可搜索 `[mock mail]`；默认路径见[日志配置](<server/src/main/resources/application.yml#L138-L140>)。生产环境应使用真实邮件服务。
 
+## 命名与升级兼容
+
+对外品牌使用 **MianCoach**，仓库使用 `miancoach`，前后端包名为 `miancoach-web` / `miancoach-server`。本次改名不需要重新建库、重新索引或删除任何数据。
+
+- **旧克隆**：执行 `git remote set-url origin https://github.com/abkkkbb/miancoach.git`。本地目录可以继续用旧名字；若要改成 `miancoach`，先停止该目录中的前后端进程、关闭 IDE，再从父目录重命名并重新打开。不要边运行边移动目录。
+- **已有部署**：保留 `BAGUWEN_*` 环境变量、`baguwen_rag` 数据库、Compose 项目名、容器和数据卷名。特别不要改 Compose 顶层 `name`、原有 `-p` 参数或执行 `down -v`，否则可能使用另一套空数据卷。
+- **镜像名称**：GitHub 仓库改名不代表 GHCR 镜像自动改名或重定向。新 CI 会发布 `miancoach-server/web`，并对原仓库继续发布 `baguwen-rag-server/web` 兼容别名；需要先提交并运行该 CI，新名称才有可拉取的产物。
+- **JAR 名称**：源码构建产物改为 `target/miancoach-server-0.1.0.jar`；容器内仍叫 `app.jar`。若服务器直接用 `java -jar` 启动，更新脚本中的 JAR 路径；本地旧 JAR 不是新版程序。
+- **不改旧迁移**：已经发布的 Flyway SQL 不因品牌改名而重写，避免 checksum 校验失败。Java 包名 `com.autumn.rag`、浏览器 `miancoach-*` 存储键与重建锁标识保持兼容。
+- **旧代码引用**：其他工作副本、服务器 clone、CI 脚本如固定了旧 GitHub 地址，请同步更新。这里的源码更新不等于已推送、发布镜像或完成线上部署。
+
 ## Docker 部署
 
 [GitHub Actions 配置](<.github/workflows/docker.yml>)会在主分支相关代码更新后构建并推送镜像，当前目标架构为 `linux/arm64`：
 
-- `ghcr.io/abkkkbb/baguwen-rag-server`
-- `ghcr.io/abkkkbb/baguwen-rag-web`
+- `ghcr.io/abkkkbb/miancoach-server`
+- `ghcr.io/abkkkbb/miancoach-web`
 
-镜像支持 `latest`、提交 SHA 标签，以及 `v*` 发布标签对应的语义化版本标签。Fork 仓库后，需将[部署配置](<compose.prod.yml>)中的镜像地址改为自己的命名空间；其他部署架构需调整构建配置。
+原仓库构建还会向 `ghcr.io/abkkkbb/baguwen-rag-server` / `baguwen-rag-web` 发布同一版本的兼容别名。确认本次改名后的 CI 构建成功、所需标签可用后，在部署环境配置中设置：
+
+```dotenv
+MIANCOACH_IMAGE_PREFIX=ghcr.io/abkkkbb/miancoach
+```
+
+不设置时，[部署配置](<compose.prod.yml>)继续使用旧镜像别名，避免在新镜像尚未发布时直接拉取失败。
+
+镜像支持 `latest`、提交 SHA 标签，以及 `v*` 发布标签对应的语义化版本标签。Fork 仓库后设置 `MIANCOACH_IMAGE_PREFIX=ghcr.io/<你的用户名>/miancoach`，CI 会发布到当前 owner 名下；其他部署架构需调整构建配置。新 GHCR 包的可见性和拉取权限需单独核对，不能假定沿用旧包设置。
 
 在部署目录准备好[compose.prod.yml](<compose.prod.yml>)、环境配置和已生成的语料目录，然后执行：
 
@@ -257,11 +286,12 @@ mvn test
 
 # 前端检查与构建，在 web 目录执行
 pnpm typecheck
+pnpm test
 pnpm build
 ```
 
 - **语料结构**：按 Markdown 叶子级标题切题，兼容 `h2 类目 → h3 题目` 与 `h2 题目` 两种布局；答案内部小节应避免被识别为独立题目。
-- **更新语料**：新增或修改语料后，通过管理后台重建索引。当前采用全量替换，题目 ID 会重新生成，并非增量更新。
+- **更新语料**：新增或修改语料后，通过管理后台重建索引。同文档同完整题干保留题目 ID 和收藏；新增题插入、消失题删除，题干改名或移到别的文档按新题处理。仍会全量计算向量，不是跳过未变内容的增量向量化。
 - **重建失败**：入库数据库操作在事务内执行，异常时回滚；更换向量维度需要修改列类型，期间可能阻塞查询。
 - **重排降级**：日志中的 `重排失败,降级回召回原序` 表示该次检索未使用重排结果。
 - **中文请求**：命令行编码不一致时，可将请求体保存为 UTF-8 文件，并通过 `curl --data-binary @file.json` 发送。

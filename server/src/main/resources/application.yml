@@ -1,6 +1,6 @@
 spring:
   application:
-    name: baguwen-server
+    name: miancoach-server
   # Spring Boot 不认 .env,这里显式导入(按 properties 格式解析;optional 表示没有也不报错)。
   # 两条路径覆盖不同启动目录:在 server/ 下启动 → ../.env;在项目根启动 → .env
   config:
@@ -127,7 +127,7 @@ app:
   mail:
     provider: ${BAGUWEN_MAIL_PROVIDER:auto}   # auto(配了 SMTP 密码即真实发) | smtp | mock(验证码打到日志)
     from: ${BAGUWEN_MAIL_FROM:}               # 只填地址,如 noreply@example.com;必须属于 Resend 里验证过的域名
-    from-name: 面试陪练                        # 收件箱里显示的发件人名。写在这里而不是 .env:.env 里的中文会乱码
+    from-name: MianCoach 面试陪练              # 收件箱里显示的发件人名。写在这里而不是 .env:.env 里的中文会乱码
 
   # ── 每日额度:调大模型的接口(问答 / 批改 / 总结)每天最多多少次,控成本。0 = 不限 ──
   # 和 nginx 分工:nginx 每个 IP 每分钟 5 次(web/nginx.conf.template),防短时间狂刷;这里给每天的花费封顶。

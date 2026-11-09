@@ -32,7 +32,7 @@ const router = createRouter({
 })
 
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} · MianCoach` : 'MianCoach · AI 模拟面试官'
+  document.title = to.meta.title ? `${to.meta.title} · MianCoach` : 'MianCoach · AI 面试陪练'
 })
 
 export default router

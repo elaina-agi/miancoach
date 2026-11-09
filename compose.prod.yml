@@ -1,3 +1,4 @@
+# 兼容旧部署:项目名决定已有 volume/network 的前缀,品牌改名时不可一起改。
 name: baguwen-rag-prod
 
 # 服务器部署用:拉 GitHub Actions 推到 ghcr 的镜像。本地开发仍用 compose.yml(只起数据库)。
@@ -21,7 +22,8 @@ services:
       retries: 12
 
   server:
-    image: ghcr.io/abkkkbb/baguwen-rag-server:${BAGUWEN_TAG:-latest}
+    # 切新名需先确认镜像已发布;默认旧别名继续由 CI 双标签发布,现有部署无需立即迁移。
+    image: ${MIANCOACH_IMAGE_PREFIX:-ghcr.io/abkkkbb/baguwen-rag}-server:${BAGUWEN_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -40,7 +42,7 @@ services:
         condition: service_healthy
 
   web:
-    image: ghcr.io/abkkkbb/baguwen-rag-web:${BAGUWEN_TAG:-latest}
+    image: ${MIANCOACH_IMAGE_PREFIX:-ghcr.io/abkkkbb/baguwen-rag}-web:${BAGUWEN_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${BAGUWEN_WEB_PORT:-80}:80"
