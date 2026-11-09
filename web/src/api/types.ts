@@ -33,6 +33,28 @@ export interface ChunkFull {
   content: string
 }
 
+// ── 题库收藏(用户归属由登录态决定,前端不传 userId) ────────────────────
+
+export interface FavoriteState {
+  favorited: boolean
+}
+
+export interface FavoriteItem {
+  chunkId: number
+  group: string
+  title: string
+  category: string | null
+  question: string
+  createdAt: string
+}
+
+export interface FavoritePage {
+  items: FavoriteItem[]
+  total: number
+  page: number
+  size: number
+}
+
 export interface AskRef {
   chunkId: number
   question: string

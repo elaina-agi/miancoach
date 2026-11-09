@@ -1,5 +1,5 @@
 import type {
-  AdminUserPage, AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, GradeOut, GroupCounts, GroupNode,
+  AdminUserPage, AnswerRow, AskRef, ChatMessageRow, ChatSessionRow, ChunkFull, FavoritePage, FavoriteState, GradeOut, GroupCounts, GroupNode,
   LoginOut, MetaInfo, QuizOverview, QuizQuestion, QuizReport, ReindexStatus, ReportItem, SessionRow, UserView, WeakRow,
 } from './types'
 import { clearSession, token } from '../lib/session'
@@ -12,14 +12,15 @@ export class ApiError extends Error {
 }
 
 /** 已登录就带上 token;游客什么都不带,后端按游客处理。 */
-function authHeaders(): Record<string, string> {
-  return token.value ? { Authorization: `Bearer ${token.value}` } : {}
+function authHeaders(sessionToken = token.value): Record<string, string> {
+  return sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
 }
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
+  const requestToken = token.value
   const resp = await fetch(path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(requestToken) },
   })
   if (!resp.ok) {
     let msg = `${resp.status} ${resp.statusText}`
@@ -29,7 +30,8 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
     } catch { /* ignore */ }
     // 带了 token 还被 401:token 过期或用户已删,本地登录态作废。
     // 没带 token 的 401(比如登录时密码错)不是登录态的问题,不能清
-    if (resp.status === 401 && token.value) clearSession()
+    // 只清发出请求时的那次登录:旧账号的慢 401 不能把刚登录的新账号踢掉。
+    if (resp.status === 401 && requestToken && token.value === requestToken) clearSession()
     throw new ApiError(msg, resp.status)
   }
   return resp.json() as Promise<T>
@@ -73,6 +75,17 @@ export const corpusApi = {
   groups: () => json<GroupCounts>('/api/corpus/groups'),
   chunk: (id: number) => json<ChunkFull>(`/api/corpus/chunk/${id}`),
   meta: () => json<MetaInfo>('/api/meta'),
+}
+
+export const favoritesApi = {
+  list: (page = 1, size = 20, group = '') => {
+    const params = new URLSearchParams({ page: String(page), size: String(size) })
+    if (group) params.set('group', group)
+    return json<FavoritePage>(`/api/favorites?${params}`)
+  },
+  state: (chunkId: number) => json<FavoriteState>(`/api/favorites/${chunkId}`),
+  add: (chunkId: number) => json<FavoriteState>(`/api/favorites/${chunkId}`, { method: 'PUT' }),
+  remove: (chunkId: number) => del<FavoriteState>(`/api/favorites/${chunkId}`),
 }
 
 // 只有管理员调得通:后端 /api/admin/** 统一校验,普通用户 403、游客 401
@@ -132,6 +145,7 @@ export interface HistoryTurn { q: string; a: string }
 export function askStream(question: string, h: StreamHandlers, history?: HistoryTurn[],
                           sessionId?: string): () => void {
   const ctrl = new AbortController()
+  const requestToken = token.value
   void (async () => {
     let doneFired = false
     const fireDone = (info?: { noAnswer?: boolean }) => {
@@ -143,7 +157,7 @@ export function askStream(question: string, h: StreamHandlers, history?: History
     try {
       const resp = await fetch('/api/chat/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: { 'Content-Type': 'application/json', ...authHeaders(requestToken) },
         body: JSON.stringify({ question, sessionId: sessionId ?? null, history: history ?? [] }),
         signal: ctrl.signal,
       })
@@ -151,7 +165,7 @@ export function askStream(question: string, h: StreamHandlers, history?: History
         let msg = `HTTP ${resp.status}`
         try { const b = await resp.json(); if (b.error) msg = b.error } catch { /* ignore */ }
         // 和 json() 同一条规则:带着 token 被 401 = 登录态失效,清掉后界面回到游客
-        if (resp.status === 401 && token.value) clearSession()
+        if (resp.status === 401 && requestToken && token.value === requestToken) clearSession()
         h.onError?.(msg, resp.status)
         return
       }

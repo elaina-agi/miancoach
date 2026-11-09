@@ -14,6 +14,7 @@ const routes = [
     children: [
       { path: 'chat/:sessionId?', name: 'chat', component: () => import('../pages/ChatView.vue'), meta: { title: '问答' } },
       { path: 'kb/:id(\\d+)?', name: 'kb', component: () => import('../pages/KnowledgeView.vue'), meta: { title: '知识库' } },
+      { path: 'favorites', name: 'favorites', component: () => import('../pages/FavoritesView.vue'), meta: { title: '我的收藏' } },
       { path: 'quiz', name: 'quiz', component: () => import('../pages/QuizView.vue'), meta: { title: '模拟面试' } },
       { path: 'records', name: 'records', component: () => import('../pages/RecordsView.vue'), meta: { title: '复盘' } },
       { path: 'about', name: 'about', component: () => import('../pages/AboutView.vue'), meta: { title: '关于' } },

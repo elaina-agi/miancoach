@@ -74,6 +74,7 @@
         </nav>
         <h1 class="title">{{ detail?.question ?? currentQ?.question ?? '' }}</h1>
         <div class="actions">
+          <FavoriteButton v-if="detail" :key="detail.chunkId" :chunk-id="detail.chunkId" />
           <RouterLink v-if="detail" :to="{ path: '/chat', query: { q: detail.question } }" class="btn btn-secondary btn-sm">
             <MessageSquare :size="14" />问 AI
           </RouterLink>
@@ -114,6 +115,7 @@ import {
   ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessageSquare, NotebookPen, Search, Shuffle, X,
 } from 'lucide-vue-next'
 import MarkdownView from '../components/MarkdownView.vue'
+import FavoriteButton from '../components/FavoriteButton.vue'
 import SourceCredit from '../components/SourceCredit.vue'
 import { corpusApi } from '../api/client'
 import type { ChunkFull } from '../api/types'

@@ -10,7 +10,7 @@
       </div>
 
       <nav class="nav" aria-label="主导航">
-        <RouterLink v-for="n in nav" :key="n.to" :to="n.to" class="nav-item" :class="{ on: isActive(n.to) }">
+        <RouterLink v-for="n in nav" :key="n.to" :to="n.to" class="nav-item" :class="{ on: isActive(n.to) }" :aria-current="isActive(n.to) ? 'page' : undefined">
           <component :is="n.icon" :size="16" />
           <span>{{ n.label }}</span>
         </RouterLink>
@@ -42,7 +42,7 @@
           </div>
         </Popover>
 
-        <!-- 关于不占主导航的位置(手机底栏只放得下四个),放在右上角,手机上也看得到 -->
+        <!-- 关于放在右上角,主导航留给问答、题库、收藏、练习与复盘 -->
         <RouterLink to="/about" class="btn btn-ghost btn-icon about-btn" :class="{ on: isActive('/about') }"
                     title="关于本站 · 题库来源" aria-label="关于本站">
           <Info :size="17" />
@@ -82,7 +82,7 @@
 
     <!-- 手机端底部标签栏(桌面隐藏) -->
     <nav class="tabbar" aria-label="主导航">
-      <RouterLink v-for="n in nav" :key="n.to" :to="n.to" class="tab" :class="{ on: isActive(n.to) }">
+      <RouterLink v-for="n in nav" :key="n.to" :to="n.to" class="tab" :class="{ on: isActive(n.to) }" :aria-current="isActive(n.to) ? 'page' : undefined">
         <component :is="n.icon" :size="20" />
         <span>{{ n.label }}</span>
       </RouterLink>
@@ -99,7 +99,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { BookOpen, ChartNoAxesColumn, Info, LogOut, MessageSquare, Moon, NotebookPen, Shield, Sun } from 'lucide-vue-next'
+import { Bookmark, BookOpen, ChartNoAxesColumn, Info, LogOut, MessageSquare, Moon, NotebookPen, Shield, Sun } from 'lucide-vue-next'
 import BrandMark from './BrandMark.vue'
 import AuthDialog from './AuthDialog.vue'
 import Popover from './ui/Popover.vue'
@@ -115,6 +115,7 @@ const route = useRoute()
 const nav = [
   { to: '/chat', label: '问答', icon: MessageSquare },
   { to: '/kb', label: '知识库', icon: BookOpen },
+  { to: '/favorites', label: '收藏', icon: Bookmark },
   { to: '/quiz', label: '模拟面试', icon: NotebookPen },
   { to: '/records', label: '复盘', icon: ChartNoAxesColumn },
 ]
@@ -198,10 +199,16 @@ onMounted(() => { void loadMeta() })
 
 .tabbar { display: none; }
 
-/* 900px 以下侧栏都收成滑出面板了,没有分隔线可对齐,品牌区按内容宽度走 */
-@media (max-width: 900px) {
+/* 五个主入口在中等宽度先收紧品牌占位,避免与账号区挤在一起。 */
+@media (max-width: 1180px) {
   .brand-slot { width: auto; margin-right: 16px; }
   .nav { margin-left: 0; }
+}
+@media (min-width: 721px) and (max-width: 980px) {
+  .brand-slot { margin-right: 8px; }
+  .nav-item { padding: 0 6px; gap: 4px; white-space: nowrap; }
+  .status-text { display: none; }
+  .status-btn { padding: 0 7px; }
 }
 
 @media (max-width: 720px) {
