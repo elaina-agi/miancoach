@@ -59,7 +59,7 @@ export function loadTree(): Promise<void> {
 }
 
 /**
- * 重建索引后题目 id 全部重新生成,缓存里的树、题数、状态都过期了:清掉重新拉。
+ * 重建索引后题目内容、题数和状态可能变化:保留题目业务 ID,仍需重新拉取这些公共缓存。
  * 各页面用的是同一份 ref,拉回来后自动刷新。
  */
 export function reloadCorpus(): Promise<void> {

@@ -46,7 +46,7 @@
             <div class="bar" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100">
               <i :style="{ width: `${percent}%` }" />
             </div>
-            <p class="hint">已用 {{ elapsed }}。可以离开这个页面，重建在服务器上继续进行；期间网站照常可用。</p>
+            <p class="hint">已用 {{ elapsed }}。可以离开这个页面，重建在服务器上继续进行；更换向量维度时，请求可能等待重建结束。</p>
           </div>
           <p v-else-if="job.state === 'SUCCEEDED' && job.result" class="note good">
             <CircleCheck :size="15" />
@@ -201,7 +201,7 @@ async function refreshJob(): Promise<void> {
   if (job.value.state === 'RUNNING') {
     schedulePoll()
   } else if (before === 'RUNNING') {
-    // 刚跑完:题目 id 全变了,各页面缓存的题库树、题数一起刷新
+    // 刚跑完:同题保留 ID,但题目内容/数量可能变化,刷新各页面共享的题库数据
     if (job.value.state === 'SUCCEEDED') {
       toast.success('索引重建完成')
       void reloadCorpus()
@@ -214,8 +214,8 @@ async function refreshJob(): Promise<void> {
 async function startReindex() {
   const ok = await confirm({
     title: '重建索引？',
-    message: '会把题库全部重新切分、重新向量化，大约要几分钟，并消耗向量接口的调用额度。重建期间网站照常可用；'
-      + '完成后题目 id 会全部重新生成，之前分享的题目链接、复盘里跳转原题的链接会失效。',
+    message: '会把题库全部重新切分、重新向量化，大约要几分钟，并消耗向量接口的调用额度。请先确认本地语料完整；更换向量维度时请求可能等待。'
+      + '同文档同题干保留题目 ID、收藏和链接。源题删除、题干改名或文档移动会清理对应旧收藏，并使旧题链接失效。',
     confirmText: '开始重建',
   })
   if (!ok) return

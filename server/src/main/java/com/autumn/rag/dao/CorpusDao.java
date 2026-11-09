@@ -3,14 +3,13 @@ package com.autumn.rag.dao;
 import com.autumn.rag.corpus.MdParser.PageMeta;
 import com.autumn.rag.corpus.MdParser.Section;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.support.SqlArrayValue;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.sql.PreparedStatement;
-import java.sql.Types;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -49,41 +48,46 @@ public class CorpusDao {
     public record Question(long chunkId, String group, String category, String question) {}
 
     // ------------------------------------------------------------------ 写入
-    public long insertDoc(PageMeta meta) {
-        KeyHolder kh = new GeneratedKeyHolder();
-        jdbc.update(con -> {
-            PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO doc(group_tag, slug, title, url, lastmod, source, md_file) "
-                            + "VALUES (?,?,?,?,?,?,?)",
-                    new String[]{"id"});
-            ps.setString(1, meta.group());
-            ps.setString(2, meta.slug());
-            ps.setString(3, meta.title());
-            ps.setString(4, emptyToNull(meta.url()));
-            ps.setObject(5, parseDate(meta.lastmod()), Types.DATE);
-            ps.setString(6, emptyToNull(meta.source()));
-            ps.setString(7, meta.mdFile());
-            return ps;
-        }, kh);
-        return kh.getKey().longValue();
+    // 固定命名空间 "BAGUWENR":同一数据库上的所有实例共用,事务提交/回滚自动释放。
+    private static final long REINDEX_LOCK_KEY = 0x4241475557454E52L;
+
+    /** 非阻塞事务锁。必须在事务内调用,否则 auto-commit 会在 SELECT 后立即释放锁。 */
+    public boolean tryReindexLock() {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("reindex 必须在数据库事务内执行");
+        }
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT pg_try_advisory_xact_lock(?)", Boolean.class, REINDEX_LOCK_KEY));
     }
 
+    /**
+     * 按板块 + slug 更新原文档并返回原 ID。保留历史方法名,但语义是 upsert。
+     * 标题、来源、路径等元数据更新不改变文档身份;移动板块或改 slug 则是新文档。
+     */
+    public long insertDoc(PageMeta meta) {
+        return jdbc.queryForObject(
+                "INSERT INTO doc(group_tag, slug, title, url, lastmod, source, md_file) "
+                        + "VALUES (?,?,?,?,?,?,?) "
+                        + "ON CONFLICT (group_tag, slug) DO UPDATE SET "
+                        + "title = EXCLUDED.title, url = EXCLUDED.url, lastmod = EXCLUDED.lastmod, "
+                        + "source = EXCLUDED.source, md_file = EXCLUDED.md_file RETURNING id",
+                Long.class, meta.group(), meta.slug(), meta.title(), emptyToNull(meta.url()),
+                parseDate(meta.lastmod()), emptyToNull(meta.source()), meta.mdFile());
+    }
+
+    /**
+     * 同文档 + 完整题干是同题,不是 question_key 的模糊/归一化匹配。
+     * 答案、类目、向量改变只更新原行,收藏/作答等外键继续指向原 ID。
+     */
     public long insertChunk(long docId, Section s, float[] embedding) {
-        KeyHolder kh = new GeneratedKeyHolder();
-        jdbc.update(con -> {
-            PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO chunk(doc_id, category, question, question_key, content, embedding) "
-                            + "VALUES (?,?,?,?,?, CAST(? AS vector))",
-                    new String[]{"id"});
-            ps.setLong(1, docId);
-            ps.setString(2, emptyToNull(s.category()));
-            ps.setString(3, s.question());
-            ps.setString(4, s.questionKey());
-            ps.setString(5, s.content());
-            ps.setString(6, vectorLiteral(embedding));
-            return ps;
-        }, kh);
-        return kh.getKey().longValue();
+        return jdbc.queryForObject(
+                "INSERT INTO chunk(doc_id, category, question, question_key, content, embedding) "
+                        + "VALUES (?,?,?,?,?, CAST(? AS vector)) "
+                        + "ON CONFLICT (doc_id, question) DO UPDATE SET "
+                        + "category = EXCLUDED.category, question_key = EXCLUDED.question_key, "
+                        + "content = EXCLUDED.content, embedding = EXCLUDED.embedding RETURNING id",
+                Long.class, docId, emptyToNull(s.category()), s.question(), s.questionKey(),
+                s.content(), vectorLiteral(embedding));
     }
 
     /** 写入子段(parent-child 的 child 级)。 */
@@ -98,10 +102,36 @@ public class CorpusDao {
         return c == null ? 0 : c;
     }
 
-    /** 全量重灌前清库(chunk 先删,doc 级联)。quiz_answer 里被删 chunk 置空,历史保留。 */
+    /**
+     * 显式清空全部语料的旧入口,不再用于 reindex。重建只删除本次已经消失的题目/文档。
+     * 保留该方法以免外部维护代码失去兼容性。
+     */
     public void wipe() {
         jdbc.update("DELETE FROM chunk");
         jdbc.update("DELETE FROM doc");
+    }
+
+    /** 子段只是可再生的检索索引,每轮重新切分;父题 ID 不随它一起删除。 */
+    public void clearSegs() {
+        jdbc.update("DELETE FROM chunk_seg");
+    }
+
+    /** 仅删除本次语料不再包含的题目,其收藏等外键按各自的 ON DELETE 规则处理。 */
+    public int deleteMissingChunks(Collection<Long> retainedIds) {
+        return jdbc.update("DELETE FROM chunk WHERE NOT (id = ANY (?))", retainedIdArray(retainedIds));
+    }
+
+    /** 必须在清理缺失题目之后调用。 */
+    public int deleteMissingDocs(Collection<Long> retainedIds) {
+        return jdbc.update("DELETE FROM doc WHERE NOT (id = ANY (?))", retainedIdArray(retainedIds));
+    }
+
+    private static SqlArrayValue retainedIdArray(Collection<Long> retainedIds) {
+        if (retainedIds == null || retainedIds.isEmpty() || retainedIds.stream().anyMatch(id -> id == null)) {
+            throw new IllegalArgumentException("保留 ID 集合不能为空或包含 null,拒绝清空语料");
+        }
+        // 一个 PG 数组参数,避免大型语料触发 JDBC 占位符数量上限;Spring 负责释放 SQL Array。
+        return new SqlArrayValue("bigint", retainedIds.toArray());
     }
 
     /** 当前 chunk.embedding 的列维度(pgvector 把维度存在 atttypmod)。 */
@@ -113,26 +143,31 @@ public class CorpusDao {
     }
 
     /**
-     * 让向量列维度跟随配置(换 embedding 模型时维度可能变)。
-     * 只在 reindex 流程里调用——此时表已清空,改列类型安全;顺手重建 HNSW 索引。
+     * 让向量列维度跟随配置。调用前须清空 chunk_seg;chunk 原行和 ID 必须保留。
+     * 只有维度改变才清旧向量并 ALTER,绝不尝试把非空旧向量 cast 成不同维度。
+     * 所有 DDL/DML 都由 reindex 的同一事务包裹,失败可一并回滚。
      */
     public void ensureEmbeddingDims(int dims) {
         if (dims <= 0) {
             throw new IllegalArgumentException("app.embed.dims 必须为正数,当前: " + dims);
         }
-        int cur = embeddingColumnDims();
-        if (cur == dims) {
-            return;
+        if (embeddingColumnDims() != dims) {
+            jdbc.execute("DROP INDEX IF EXISTS idx_chunk_embedding");
+            jdbc.update("UPDATE chunk SET embedding = NULL WHERE embedding IS NOT NULL");
+            jdbc.execute("ALTER TABLE chunk ALTER COLUMN embedding TYPE vector(" + dims + ")");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embedding "
+                    + "ON chunk USING hnsw (embedding vector_cosine_ops)");
         }
-        jdbc.execute("DROP INDEX IF EXISTS idx_chunk_embedding");
-        jdbc.execute("ALTER TABLE chunk ALTER COLUMN embedding TYPE vector(" + dims + ")");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_chunk_embedding "
-                + "ON chunk USING hnsw (embedding vector_cosine_ops)");
-        // 子段向量列跟随(chunk 级换维度时子段也必须换,两者始终同一空间)
-        jdbc.execute("DROP INDEX IF EXISTS idx_chunk_seg_embedding");
-        jdbc.execute("ALTER TABLE chunk_seg ALTER COLUMN embedding TYPE vector(" + dims + ")");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_chunk_seg_embedding "
-                + "ON chunk_seg USING hnsw (embedding vector_cosine_ops)");
+        // 分别检查两列,即使旧库曾出现父/子维度不一致也能修复,不必碰维度没变的父题。
+        Integer segDims = jdbc.queryForObject(
+                "SELECT atttypmod FROM pg_attribute WHERE attrelid = 'chunk_seg'::regclass AND attname = 'embedding'",
+                Integer.class);
+        if (segDims == null || segDims != dims) {
+            jdbc.execute("DROP INDEX IF EXISTS idx_chunk_seg_embedding");
+            jdbc.execute("ALTER TABLE chunk_seg ALTER COLUMN embedding TYPE vector(" + dims + ")");
+            jdbc.execute("CREATE INDEX IF NOT EXISTS idx_chunk_seg_embedding "
+                    + "ON chunk_seg USING hnsw (embedding vector_cosine_ops)");
+        }
     }
 
     public int countChunks() {
