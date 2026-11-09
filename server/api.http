@@ -74,6 +74,27 @@ GET http://localhost:8080/api/corpus/groups
 ### 2c. 单题原文(把 id 换成树里看到的 chunkId)
 GET http://localhost:8080/api/corpus/chunk/1901
 
+### ──────────────── 题目收藏(登录用户各自隔离) ────────────────
+# 用普通账号登录后替换 token,chunkId 从题目树选择。不要将真实 token 提交到仓库。
+@userToken = 替换成登录返回的token
+@favoriteChunkId = 1
+
+### 2d. 收藏整道知识库题目(幂等)
+PUT http://localhost:8080/api/favorites/{{favoriteChunkId}}
+Authorization: Bearer {{userToken}}
+
+### 2e. 当前用户是否已收藏
+GET http://localhost:8080/api/favorites/{{favoriteChunkId}}
+Authorization: Bearer {{userToken}}
+
+### 2f. 我的收藏(可去掉 group 查询全部板块)
+GET http://localhost:8080/api/favorites?page=1&size=20&group=java
+Authorization: Bearer {{userToken}}
+
+### 2g. 取消自己的收藏(幂等)
+DELETE http://localhost:8080/api/favorites/{{favoriteChunkId}}
+Authorization: Bearer {{userToken}}
+
 ### ──────────────── 模拟面试 ────────────────
 
 ### 3. 开始面试:抽一道题(返回 sessionId 和 chunkId,记下来供 3b/3c 用)
