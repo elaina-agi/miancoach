@@ -2,7 +2,7 @@
 
 MianCoach 是一个基于检索增强生成（RAG）的技术面试陪练应用，将知识库问答、题目收藏、模拟面试和练习复盘整合在同一套题库中。系统从题库原文检索参考资料，生成带来源引用的回答，并根据标准资料提供作答反馈。
 
-仓库：[abkkkbb/miancoach](https://github.com/abkkkbb/miancoach)。原仓库名为 `baguwen-rag`；现有部署保持数据库与环境变量兼容，迁移注意事项见下方「命名与升级兼容」。
+仓库：[elaina-agi/miancoach](https://github.com/elaina-agi/miancoach)。原仓库名为 `baguwen-rag`；现有部署保持数据库与环境变量兼容，迁移注意事项见下方「命名与升级兼容」。
 
 ## 主要功能
 
@@ -86,7 +86,7 @@ miancoach/
 以下步骤从项目根目录开始。首次获取项目：
 
 ```bash
-git clone https://github.com/abkkkbb/miancoach.git
+git clone https://github.com/elaina-agi/miancoach.git
 cd miancoach
 ```
 
@@ -211,7 +211,7 @@ docker exec -it baguwen-pg psql -U baguwen -d baguwen_rag -c "UPDATE app_user SE
 
 对外品牌使用 **MianCoach**，仓库使用 `miancoach`，前后端包名为 `miancoach-web` / `miancoach-server`。本次改名不需要重新建库、重新索引或删除任何数据。
 
-- **旧克隆**：执行 `git remote set-url origin https://github.com/abkkkbb/miancoach.git`。本地目录可以继续用旧名字；若要改成 `miancoach`，先停止该目录中的前后端进程、关闭 IDE，再从父目录重命名并重新打开。不要边运行边移动目录。
+- **旧克隆**：执行 `git remote set-url origin https://github.com/elaina-agi/miancoach.git`。本地目录可以继续用旧名字；若要改成 `miancoach`，先停止该目录中的前后端进程、关闭 IDE，再从父目录重命名并重新打开。不要边运行边移动目录。
 - **已有部署**：保留 `BAGUWEN_*` 环境变量、`baguwen_rag` 数据库、Compose 项目名、容器和数据卷名。特别不要改 Compose 顶层 `name`、原有 `-p` 参数或执行 `down -v`，否则可能使用另一套空数据卷。
 - **镜像名称**：GitHub 仓库改名不代表 GHCR 镜像自动改名或重定向。新 CI 会发布 `miancoach-server/web`，并对原仓库继续发布 `baguwen-rag-server/web` 兼容别名；需要先提交并运行该 CI，新名称才有可拉取的产物。
 - **JAR 名称**：源码构建产物改为 `target/miancoach-server-0.1.0.jar`；容器内仍叫 `app.jar`。若服务器直接用 `java -jar` 启动，更新脚本中的 JAR 路径；本地旧 JAR 不是新版程序。
@@ -222,13 +222,13 @@ docker exec -it baguwen-pg psql -U baguwen -d baguwen_rag -c "UPDATE app_user SE
 
 [GitHub Actions 配置](<.github/workflows/docker.yml>)会在主分支相关代码更新后构建并推送镜像，当前目标架构为 `linux/arm64`：
 
-- `ghcr.io/abkkkbb/miancoach-server`
-- `ghcr.io/abkkkbb/miancoach-web`
+- `ghcr.io/elaina-agi/miancoach-server`
+- `ghcr.io/elaina-agi/miancoach-web`
 
-原仓库构建还会向 `ghcr.io/abkkkbb/baguwen-rag-server` / `baguwen-rag-web` 发布同一版本的兼容别名。确认本次改名后的 CI 构建成功、所需标签可用后，在部署环境配置中设置：
+原仓库构建还会向 `ghcr.io/elaina-agi/baguwen-rag-server` / `baguwen-rag-web` 发布同一版本的兼容别名。确认本次改名后的 CI 构建成功、所需标签可用后，在部署环境配置中设置：
 
 ```dotenv
-MIANCOACH_IMAGE_PREFIX=ghcr.io/abkkkbb/miancoach
+MIANCOACH_IMAGE_PREFIX=ghcr.io/elaina-agi/miancoach
 ```
 
 不设置时，[部署配置](<compose.prod.yml>)继续使用旧镜像别名，避免在新镜像尚未发布时直接拉取失败。

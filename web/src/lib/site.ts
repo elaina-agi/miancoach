@@ -1,7 +1,7 @@
 // 站点级常量:开源仓库、题库来源。关于页和各处的来源标注都从这里取,改一处全站生效
 
-export const REPO_URL = 'https://github.com/abkkkbb/miancoach'
-export const REPO_NAME = 'abkkkbb/miancoach'
+export const REPO_URL = 'https://github.com/elaina-agi/miancoach'
+export const REPO_NAME = 'elaina-agi/miancoach'
 
 export interface CorpusSource {
   name: string

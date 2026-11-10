@@ -23,7 +23,7 @@ services:
 
   server:
     # 切新名需先确认镜像已发布;默认旧别名继续由 CI 双标签发布,现有部署无需立即迁移。
-    image: ${MIANCOACH_IMAGE_PREFIX:-ghcr.io/abkkkbb/baguwen-rag}-server:${BAGUWEN_TAG:-latest}
+    image: ${MIANCOACH_IMAGE_PREFIX:-ghcr.io/elaina-agi/baguwen-rag}-server:${BAGUWEN_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -42,7 +42,7 @@ services:
         condition: service_healthy
 
   web:
-    image: ${MIANCOACH_IMAGE_PREFIX:-ghcr.io/abkkkbb/baguwen-rag}-web:${BAGUWEN_TAG:-latest}
+    image: ${MIANCOACH_IMAGE_PREFIX:-ghcr.io/elaina-agi/baguwen-rag}-web:${BAGUWEN_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${BAGUWEN_WEB_PORT:-80}:80"
